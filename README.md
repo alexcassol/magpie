@@ -52,11 +52,16 @@ Successful calls return `{:ok, body}`; API errors return `{{:status_code, code},
 
 ## Covered endpoints
 
-- **files** — upload, download, copy/move/delete (incl. batch), list_folder (+ continue, cursor, longpoll), metadata, search_v2, thumbnails, previews, temporary links, save_url, upload sessions
-- **users** — get_account, get_account_batch, get_current_account, get_space_usage
-- **file_requests** — create, get, list, update
-- **sharing** — create_shared_link_with_settings
-- **paper** — docs create/list/download/archive, folder users, sharing policy (the whole Paper API is deprecated by Dropbox)
+Magpie covers **all current user-scoped routes** of the Dropbox API v2 (132 routes as of August 2026), verified against the official [dropbox-api-spec](https://github.com/dropbox/dropbox-api-spec):
+
+- **files** — upload (single and sessions, incl. batch), download, download_zip, export, copy/move/delete (incl. batches), list_folder (+ continue, cursor, longpoll), metadata, search, thumbnails, previews, temporary links and upload links, save_url, tags, locks, Paper-as-files
+- **sharing** — shared links (create/modify/revoke/list/download), file members, folder members, full shared-folder lifecycle
+- **file_properties** — property groups and templates (user- and team-owned)
+- **file_requests** — create, get, update, list, count, delete
+- **users** / **account** / **auth** / **check** / **contacts** / **openid**
+- **paper** — legacy `/paper/docs/*` kept for compatibility (deprecated by Dropbox — prefer `Magpie.Files.Paper`)
+
+Dropbox Business (`/team/*`) routes are out of scope.
 
 ## Testing
 
