@@ -1,87 +1,107 @@
 defmodule Magpie do
   @moduledoc """
-  Magpie is a wrapper for Dropbox API V2
+  Core HTTP layer for the Dropbox API v2.
+
+  Builds authenticated `Req` requests and normalizes responses. RPC-style
+  endpoints go through `post/3`, while content endpoints (file bytes) go
+  through `upload_request/5` and `download_request/5`.
+
+  The Dropbox endpoints can be overridden (rarely needed) via:
+
+      config :magpie,
+        base_url: "https://api.dropboxapi.com/2",
+        upload_url: "https://content.dropboxapi.com/2/"
+
+  Extra options merged into every request (e.g. `plug: {Req.Test, Magpie}`
+  for testing) can be set with `config :magpie, req_options: [...]`.
   """
 
-  @type response :: {:ok, term()} | {{:status_code, integer()}, String.t()}
+  @default_base_url "https://api.dropboxapi.com/2"
+  @default_upload_url "https://content.dropboxapi.com/2/"
+
+  @type response :: {:ok, term()} | {{:status_code, integer()}, term()}
 
   @type response_download ::
-          %{body: String.t(), headers: list()} | {{:status_code, integer()}, String.t()}
+          %{body: binary(), headers: list() | map()} | {{:status_code, integer()}, term()}
 
-  @base_url Application.compile_env(:magpie, :base_url)
-  def post(client, url, body \\ "")
+  @doc "Base URL for RPC endpoints."
+  def base_url, do: Application.get_env(:magpie, :base_url, @default_base_url)
 
-  def post(client, url, body) when byte_size(body) > 0 do
-    new_req(client, headers: json_headers())
+  @doc "Base URL for content (upload/download) endpoints."
+  def upload_url, do: Application.get_env(:magpie, :upload_url, @default_upload_url)
+
+  @doc """
+  Send an RPC request to a Dropbox endpoint, JSON-encoding `body` when given.
+  """
+  @spec post(struct(), binary(), term()) :: response
+  def post(client, url, body \\ "") do
+    client
+    |> new_req()
     |> post_request(url, body)
   end
 
-  def post(client, url, body) do
-    new_req(client)
-    |> post_request(url, body)
-  end
-
+  @doc """
+  Same as `post/3` but against an explicit base URL (used by content endpoints
+  that speak JSON, such as `/files/get_thumbnail_batch`).
+  """
+  @spec post_url(struct(), binary(), binary(), term()) :: response
   def post_url(client, base_url, url, body \\ "") do
-    new_req(client, base_url: base_url, headers: json_headers())
+    client
+    |> new_req(base_url: base_url)
     |> post_request(url, body)
   end
 
   @spec process_response(Req.Response.t()) :: response
   def process_response(%Req.Response{status: 200, body: body}), do: {:ok, body}
 
-  def process_response(%Req.Response{status: status_code, body: body}) do
-    cond do
-      status_code in 400..599 ->
-        {{:status_code, status_code}, body}
-    end
-  end
+  def process_response(%Req.Response{status: status, body: body}),
+    do: {{:status_code, status}, body}
 
   @spec download_response(Req.Response.t()) :: response_download
   def download_response(%Req.Response{status: 200, body: body, headers: headers}),
     do: %{body: body, headers: headers}
 
-  def download_response(%Req.Response{status: status_code, body: body}) do
-    cond do
-      status_code in 400..599 ->
-        {{:status_code, status_code}, body}
-    end
-  end
+  def download_response(%Req.Response{status: status, body: body}),
+    do: {{:status_code, status}, body}
 
-  def post_request(req, url, body \\ "", headers \\ []) do
-    json_opt =
-      if body == "" do
-        []
-      else
-        [json: body]
-      end
+  def post_request(req, url, body \\ "", headers \\ [])
 
-    Req.post!(req, [url: url, headers: headers] ++ json_opt)
+  def post_request(req, url, "", headers) do
+    req
+    |> Req.post!(url: url, headers: headers)
     |> process_response()
   end
 
-  def upload_request(client, base_url, url, data, headers) do
-    new_req(client, base_url: base_url, headers: headers)
-    |> post_request(url, {:file, data})
+  def post_request(req, url, body, headers) do
+    req
+    |> Req.post!(url: url, headers: headers, json: body)
+    |> process_response()
+  end
+
+  @doc """
+  Upload the file at local path `file` as the raw request body.
+  The file is streamed, so large files are not loaded into memory at once.
+  """
+  def upload_request(client, base_url, url, file, headers) do
+    client
+    |> new_req(base_url: base_url, headers: headers)
+    |> Req.post!(url: url, body: File.stream!(file, 64_000))
+    |> process_response()
   end
 
   def download_request(client, base_url, url, data, headers) do
-    new_req(client, base_url: base_url, headers: headers)
+    client
+    |> new_req(base_url: base_url, headers: headers)
     |> Req.post!(url: url, body: data)
-    |> download_response
+    |> download_response()
   end
 
   def new_req(client, opts \\ []) do
-    base_url = Keyword.get(opts, :base_url, @base_url)
+    base_url = Keyword.get(opts, :base_url, base_url())
     headers = Keyword.get(opts, :headers, [])
 
     [base_url: base_url, headers: headers, auth: {:bearer, client.access_token}]
     |> Keyword.merge(Application.get_env(:magpie, :req_options, []))
     |> Req.new()
-  end
-
-  def json_headers do
-    [
-      {:content_type, "application/json"}
-    ]
   end
 end

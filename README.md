@@ -18,12 +18,13 @@ end
 
 > Publishing to Hex is planned; once published this becomes `{:magpie, "~> 0.1"}`.
 
-Then configure the Dropbox endpoints in your `config/config.exs`:
+No configuration is required. The Dropbox endpoints can be overridden (rarely needed), and extra `Req` options can be merged into every request:
 
 ```elixir
 config :magpie,
   base_url: "https://api.dropboxapi.com/2",
-  upload_url: "https://content.dropboxapi.com/2/"
+  upload_url: "https://content.dropboxapi.com/2/",
+  req_options: []
 ```
 
 ## Usage
@@ -51,10 +52,11 @@ Successful calls return `{:ok, body}`; API errors return `{{:status_code, code},
 
 ## Covered endpoints
 
-- **files** — upload, download, copy/move/delete (incl. batch), list_folder (+ continue, cursor, longpoll), metadata, search, thumbnails, previews, temporary links, save_url, upload sessions
+- **files** — upload, download, copy/move/delete (incl. batch), list_folder (+ continue, cursor, longpoll), metadata, search_v2, thumbnails, previews, temporary links, save_url, upload sessions
 - **users** — get_account, get_account_batch, get_current_account, get_space_usage
 - **file_requests** — create, get, list, update
-- **paper** — docs create/list/download/archive, folder users, sharing policy
+- **sharing** — create_shared_link_with_settings
+- **paper** — docs create/list/download/archive, folder users, sharing policy (the whole Paper API is deprecated by Dropbox)
 
 ## Testing
 
