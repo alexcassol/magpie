@@ -98,6 +98,24 @@ defmodule Magpie.FileRequests do
   end
 
   @doc """
+  Returns a lazy `Stream` over **all** file requests of the current user,
+  fetching pages through `list_v2/2` + `list_continue/2` on demand. Raises
+  `Magpie.Pager.Error` if a page request fails.
+
+  ## Example
+
+      client |> Magpie.FileRequests.stream() |> Enum.count()
+
+  """
+  def stream(client, limit \\ 1000) do
+    Magpie.Pager.stream(
+      fn -> list_v2(client, limit) end,
+      fn cursor -> list_continue(client, cursor) end,
+      items_key: "file_requests"
+    )
+  end
+
+  @doc """
   Update a file request.
 
   ## Example

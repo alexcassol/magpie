@@ -306,6 +306,25 @@ defmodule Magpie.Sharing do
   end
 
   @doc """
+  Returns a lazy `Stream` over **all** shared folders of the current user,
+  fetching pages through `list_folders/2` + `list_folders_continue/2` on
+  demand. Raises `Magpie.Pager.Error` if a page request fails.
+
+  ## Example
+
+      client
+      |> Magpie.Sharing.list_folders_stream()
+      |> Enum.map(& &1["name"])
+
+  """
+  def list_folders_stream(client, opts \\ %{}) do
+    Magpie.Pager.stream(
+      fn -> list_folders(client, opts) end,
+      fn cursor -> list_folders_continue(client, cursor) end
+    )
+  end
+
+  @doc """
   Return the list of all shared folders the current user can mount or
   unmount. `opts` accepts `"limit"` and `"actions"`.
 

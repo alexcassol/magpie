@@ -121,6 +121,68 @@ defmodule Magpie.Files.UploadSession do
   end
 
   @doc """
+  Starts an upload session with `data` (iodata) as its first bytes.
+  Returns `{:ok, %{"session_id" => id}}` on success.
+
+  Use this (together with `append_data/5` and `finish_data/5`) when you
+  control the chunks yourself; for the common "upload this local file"
+  case prefer `Magpie.Files.upload_file/4`, which orchestrates the whole
+  session automatically.
+
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-upload_session-start
+  """
+  def start_data(client, data, close \\ false) do
+    headers = %{
+      "Dropbox-API-Arg" => Jason.encode!(%{"close" => close}),
+      "Content-Type" => "application/octet-stream"
+    }
+
+    upload_data_request(client, upload_url(), "files/upload_session/start", data, headers)
+  end
+
+  @doc """
+  Appends `data` (iodata) to the upload session `session_id` at `offset`
+  (the number of bytes already uploaded to the session).
+
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-upload_session-append_v2
+  """
+  def append_data(client, session_id, offset, data, close \\ false) do
+    arg = %{
+      "cursor" => %{"session_id" => session_id, "offset" => offset},
+      "close" => close
+    }
+
+    headers = %{
+      "Dropbox-API-Arg" => Jason.encode!(arg),
+      "Content-Type" => "application/octet-stream"
+    }
+
+    upload_data_request(client, upload_url(), "files/upload_session/append_v2", data, headers)
+  end
+
+  @doc """
+  Finishes the upload session `session_id`, committing the uploaded bytes to
+  the path given in `commit` (a map with the `/files/upload` argument fields,
+  e.g. `%{"path" => "/backup.zip", "mode" => "add"}`). Optional trailing
+  `data` is appended before committing.
+
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-upload_session-finish
+  """
+  def finish_data(client, session_id, offset, commit, data \\ "") do
+    arg = %{
+      "cursor" => %{"session_id" => session_id, "offset" => offset},
+      "commit" => commit
+    }
+
+    headers = %{
+      "Dropbox-API-Arg" => Jason.encode!(arg),
+      "Content-Type" => "application/octet-stream"
+    }
+
+    upload_data_request(client, upload_url(), "files/upload_session/finish", data, headers)
+  end
+
+  @doc """
   Start multiple upload sessions at once. `opts` accepts `"session_type"`
   (`%{".tag" => "sequential"}` or `%{".tag" => "concurrent"}`).
 

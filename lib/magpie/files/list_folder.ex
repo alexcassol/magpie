@@ -21,6 +21,26 @@ defmodule Magpie.Files.ListFolder do
   end
 
   @doc """
+  Returns a lazy `Stream` over **all** entries of a folder, fetching pages
+  through `list_folder/2` + `list_folder_continue/2` on demand — no cursor
+  handling needed. Raises `Magpie.Pager.Error` if a page request fails.
+
+  ## Example
+
+      client
+      |> Magpie.Files.ListFolder.stream("/Photos")
+      |> Stream.filter(&(&1[".tag"] == "file"))
+      |> Enum.map(& &1["name"])
+
+  """
+  def stream(client, path) do
+    Magpie.Pager.stream(
+      fn -> list_folder(client, path) end,
+      fn cursor -> list_folder_continue(client, cursor) end
+    )
+  end
+
+  @doc """
   Once a cursor has been retrieved from list_folder,
   use this to paginate through all files and retrieve updates to the folder,
   following the same rules as documented for list_folder.

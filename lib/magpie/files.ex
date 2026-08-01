@@ -6,6 +6,11 @@ defmodule Magpie.Files do
   import Magpie
   import Magpie.Utils
   alias Magpie.Client
+  alias Magpie.Files.UploadSession
+
+  # Dropbox rejects single-request uploads above 150 MiB
+  @session_threshold 150 * 1024 * 1024
+  @default_chunk_size 8 * 1024 * 1024
 
   @doc """
   Create folder returns map
@@ -149,6 +154,26 @@ defmodule Magpie.Files do
   end
 
   @doc """
+  Returns a lazy `Stream` over **all** search matches, fetching pages
+  through `search/3` + `search_continue/2` on demand. Raises
+  `Magpie.Pager.Error` if a page request fails.
+
+  ## Example
+
+      client
+      |> Magpie.Files.search_stream("report", %{"path" => "/Work"})
+      |> Enum.take(50)
+
+  """
+  def search_stream(client, query, options \\ %{}) do
+    Magpie.Pager.stream(
+      fn -> search(client, query, options) end,
+      fn cursor -> search_continue(client, cursor) end,
+      items_key: "matches"
+    )
+  end
+
+  @doc """
   Create a new file with the contents provided in the request.
 
   ## Example
@@ -178,6 +203,83 @@ defmodule Magpie.Files do
       headers
     )
   end
+
+  @doc """
+  Uploads the local file at `local_path` to `path` in the user's Dropbox,
+  picking the right strategy automatically:
+
+    * files up to `:session_threshold` bytes go through a single
+      `/files/upload` call;
+    * larger files are streamed through an upload session
+      (`start` → `append_v2` × N → `finish`) in chunks of `:chunk_size`
+      bytes, without ever loading the whole file into memory.
+
+  Returns `{:ok, file_metadata}` on success, the API error tuple on Dropbox
+  errors, or `{:error, posix}` when the local file cannot be read.
+
+  ## Options
+
+    * `:chunk_size` — upload session chunk size in bytes (default 8 MiB)
+    * `:session_threshold` — size above which an upload session is used
+      (default 150 MiB, the Dropbox limit for single-request uploads)
+    * `:mode` — `"add"` (default) or `"overwrite"`
+    * `:autorename` — default `true`
+    * `:mute` — default `false`
+
+  ## Example
+
+      {:ok, metadata} = Magpie.Files.upload_file(client, "/Backup/db.dump", "priv/db.dump")
+
+  """
+  def upload_file(client, path, local_path, opts \\ []) do
+    threshold = Keyword.get(opts, :session_threshold, @session_threshold)
+
+    case File.stat(local_path) do
+      {:ok, %File.Stat{size: size}} when size <= threshold ->
+        upload(
+          client,
+          path,
+          local_path,
+          Keyword.get(opts, :mode, "add"),
+          Keyword.get(opts, :autorename, true),
+          Keyword.get(opts, :mute, false)
+        )
+
+      {:ok, %File.Stat{}} ->
+        upload_via_session(client, path, local_path, opts)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp upload_via_session(client, path, local_path, opts) do
+    chunk_size = Keyword.get(opts, :chunk_size, @default_chunk_size)
+
+    commit = %{
+      "path" => path,
+      "mode" => Keyword.get(opts, :mode, "add"),
+      "autorename" => Keyword.get(opts, :autorename, true),
+      "mute" => Keyword.get(opts, :mute, false)
+    }
+
+    with {:ok, %{"session_id" => session_id}} <- UploadSession.start_data(client, "") do
+      local_path
+      |> File.stream!(chunk_size)
+      |> Enum.reduce_while({:ok, 0}, fn chunk, {:ok, offset} ->
+        case UploadSession.append_data(client, session_id, offset, chunk) do
+          {:ok, _} -> {:cont, {:ok, offset + byte_size(chunk)}}
+          error -> {:halt, error}
+        end
+      end)
+      |> finish_session(client, session_id, commit)
+    end
+  end
+
+  defp finish_session({:ok, offset}, client, session_id, commit),
+    do: UploadSession.finish_data(client, session_id, offset, commit)
+
+  defp finish_session(error, _client, _session_id, _commit), do: error
 
   @doc """
   Download a file from a user's Dropbox.
