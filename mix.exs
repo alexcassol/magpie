@@ -12,6 +12,7 @@ defmodule Magpie.MixProject do
       name: "Magpie",
       description: "Elixir client for the Dropbox API v2, built on Req",
       start_permanent: Mix.env() == :prod,
+      test_coverage: [tool: ExCoveralls],
       package: package(),
       docs: docs(),
       deps: deps()
@@ -22,10 +23,22 @@ defmodule Magpie.MixProject do
     [extra_applications: [:logger]]
   end
 
+  def cli do
+    [
+      preferred_envs: [
+        coveralls: :test,
+        "coveralls.detail": :test,
+        "coveralls.html": :test,
+        "coveralls.github": :test
+      ]
+    ]
+  end
+
   defp deps do
     [
       {:req, "~> 0.7"},
       {:plug, "~> 1.15", only: :test},
+      {:excoveralls, "~> 0.18", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
     ]
   end
@@ -35,7 +48,38 @@ defmodule Magpie.MixProject do
       main: "readme",
       source_url: @source_url,
       source_ref: "v#{@version}",
-      extras: ["README.md", "LICENSE"]
+      extras: [
+        "README.md",
+        "guides/examples.md",
+        "LICENSE"
+      ],
+      groups_for_extras: [
+        Guides: ~r/guides\/.*/
+      ],
+      groups_for_modules: [
+        Core: [Magpie, Magpie.Client, Magpie.Utils],
+        "High-level flows": [Magpie.Async, Magpie.Pager, Magpie.Pager.Error],
+        Files: ~r/Magpie\.Files.*/,
+        Sharing: [Magpie.Sharing],
+        "Users & Account": [
+          Magpie.Users,
+          Magpie.Accounts,
+          Magpie.Auth,
+          Magpie.Check,
+          Magpie.Contacts,
+          Magpie.OpenId
+        ],
+        "File properties & requests": [Magpie.FileProperties, Magpie.FileRequests],
+        "Paper (deprecated)": ~r/Magpie\.Paper.*/,
+        Structs: [
+          Magpie.Account,
+          Magpie.Allocation,
+          Magpie.Folder,
+          Magpie.Name,
+          Magpie.SharedLink,
+          Magpie.SpaceUsage
+        ]
+      ]
     ]
   end
 
