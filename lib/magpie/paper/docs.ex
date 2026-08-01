@@ -159,4 +159,14 @@ defmodule Magpie.Paper.Docs do
       headers
     )
   end
+
+  @doc """
+  Returns metadata for a Paper doc or Cloud Doc. This route is NOT deprecated.
+  `opts` accepts `"doc_id"` or `"file_id"`.
+
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#paper-docs-get_metadata
+  """
+  def get_metadata(client, opts \\ %{}) do
+    post(client, "/paper/docs/get_metadata", opts)
+  end
 end

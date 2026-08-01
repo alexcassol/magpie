@@ -89,6 +89,17 @@ defmodule Magpie do
     |> process_response()
   end
 
+  @doc """
+  Upload `data` (iodata or enumerable) as the raw request body.
+  Used by content endpoints that take bytes directly instead of a local file.
+  """
+  def upload_data_request(client, base_url, url, data, headers) do
+    client
+    |> new_req(base_url: base_url, headers: headers)
+    |> Req.post!(url: url, body: data)
+    |> process_response()
+  end
+
   def download_request(client, base_url, url, data, headers) do
     client
     |> new_req(base_url: base_url, headers: headers)

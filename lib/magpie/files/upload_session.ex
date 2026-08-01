@@ -121,6 +121,36 @@ defmodule Magpie.Files.UploadSession do
   end
 
   @doc """
+  Start multiple upload sessions at once. `opts` accepts `"session_type"`
+  (`%{".tag" => "sequential"}` or `%{".tag" => "concurrent"}`).
+
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-upload_session-start_batch
+  """
+  def start_batch(client, num_sessions, opts \\ %{}) do
+    body = Map.merge(%{"num_sessions" => num_sessions}, opts)
+    post(client, "/files/upload_session/start_batch", body)
+  end
+
+  @doc """
+  Append data to multiple upload sessions in a single request. `data` is the
+  concatenated content for all sessions (iodata), split according to each
+  entry's `"length"`; entries are maps with `"cursor"`, `"length"` and
+  optionally `"close"`.
+
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-upload_session-append_batch
+  """
+  def append_batch(client, entries, data) do
+    arg = %{"entries" => entries}
+
+    headers = %{
+      "Dropbox-API-Arg" => Jason.encode!(arg),
+      "Content-Type" => "application/octet-stream"
+    }
+
+    upload_data_request(client, upload_url(), "files/upload_session/append_batch", data, headers)
+  end
+
+  @doc """
   Returns the status of an asynchronous job for
   upload_session/finish_batch.
   If success, it returns list of result for each entry.

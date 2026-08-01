@@ -100,4 +100,14 @@ defmodule Magpie.Users do
       {{:status_code, status_code}, body} -> {:error, {status_code, body}}
     end
   end
+
+  @doc """
+  Get a list of feature values that may be configured for the current account,
+  e.g. `[%{".tag" => "paper_as_files"}]`.
+
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#users-features-get_values
+  """
+  def features_get_values(client, features) do
+    post(client, "/users/features/get_values", %{"features" => features})
+  end
 end

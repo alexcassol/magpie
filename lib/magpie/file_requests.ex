@@ -53,6 +53,51 @@ defmodule Magpie.FileRequests do
   end
 
   @doc """
+  Returns the total number of file requests owned by this user.
+
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#file_requests-count
+  """
+  def count(client) do
+    post(client, "/file_requests/count")
+  end
+
+  @doc """
+  Delete a batch of closed file requests by id.
+
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#file_requests-delete
+  """
+  def delete(client, ids) do
+    post(client, "/file_requests/delete", %{"ids" => ids})
+  end
+
+  @doc """
+  Delete all closed file requests owned by this user.
+
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#file_requests-delete_all_closed
+  """
+  def delete_all_closed(client) do
+    post(client, "/file_requests/delete_all_closed")
+  end
+
+  @doc """
+  Returns a paginated list of file requests owned by this user.
+
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#file_requests-list_v2
+  """
+  def list_v2(client, limit \\ 1000) do
+    post(client, "/file_requests/list_v2", %{"limit" => limit})
+  end
+
+  @doc """
+  Fetches the next page of results from `list_v2/2`.
+
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#file_requests-list-continue
+  """
+  def list_continue(client, cursor) do
+    post(client, "/file_requests/list/continue", %{"cursor" => cursor})
+  end
+
+  @doc """
   Update a file request.
 
   ## Example
