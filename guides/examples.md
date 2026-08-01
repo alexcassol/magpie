@@ -14,7 +14,7 @@ client = Magpie.Client.new(System.fetch_env!("DROPBOX_ACCESS_TOKEN"))
 {:ok, %{"result" => "ping"}} = Magpie.Check.user(client)
 
 # Who am I?
-%{"email" => email} = Magpie.Users.current_account(client)
+{:ok, %{"email" => email}} = Magpie.Users.current_account(client)
 ```
 
 ## Uploading files
@@ -55,11 +55,11 @@ the fly), use the lower-level primitives:
 
 ```elixir
 # Into memory
-%{body: contents} = Magpie.Files.download(client, "/Backup/db.dump")
+{:ok, %{body: contents}} = Magpie.Files.download(client, "/Backup/db.dump")
 File.write!("db.dump", contents)
 
 # A whole folder as a zip
-%{body: zip} = Magpie.Files.download_zip(client, "/Backup")
+{:ok, %{body: zip}} = Magpie.Files.download_zip(client, "/Backup")
 File.write!("backup.zip", zip)
 
 # Or hand out a short-lived direct link instead
@@ -137,23 +137,25 @@ request["url"]
 
 ## Handling errors
 
-Successful calls return `{:ok, body}`. Dropbox errors come back as
-`{{:status_code, code}, body}` with the decoded error payload:
+Successful calls return `{:ok, result}`. Dropbox errors come back as
+`{:error, %Magpie.Error{}}` carrying the HTTP `status`, Dropbox's
+`error_summary` and the full decoded error `body`:
 
 ```elixir
 case Magpie.Files.create_folder(client, "/Existing") do
   {:ok, %{"metadata" => metadata}} ->
     metadata
 
-  {{:status_code, 409}, %{"error_summary" => "path/conflict" <> _}} ->
+  {:error, %Magpie.Error{status: 409, summary: "path/conflict" <> _}} ->
     :already_exists
 
-  {{:status_code, status}, body} ->
-    raise "Dropbox error #{status}: #{inspect(body)}"
+  {:error, error} ->
+    # Magpie.Error is an exception — raise it when you cannot handle it
+    raise error
 end
 ```
 
-Paginated streams raise `Magpie.Pager.Error` instead, since a `Stream`
+Paginated streams raise `Magpie.Error` instead, since a `Stream`
 cannot return a tuple mid-enumeration.
 
 ## Testing your app

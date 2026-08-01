@@ -100,7 +100,7 @@ defmodule Magpie.FileRequests do
   @doc """
   Returns a lazy `Stream` over **all** file requests of the current user,
   fetching pages through `list_v2/2` + `list_continue/2` on demand. Raises
-  `Magpie.Pager.Error` if a page request fails.
+  `Magpie.Error` if a page request fails.
 
   ## Example
 

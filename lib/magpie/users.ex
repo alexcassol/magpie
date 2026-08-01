@@ -7,29 +7,34 @@ defmodule Magpie.Users do
   import Magpie.Utils
 
   @doc """
-  Get user account by account_id
+  Get user account by account_id.
 
   ## Example
 
-    Magpie.Users client, "TOKEN"
+    Magpie.Users.get_account client, "dbid:..."
 
-  More info at: https://www.dropbox.com/developers/documentation/http/documentation#users-get_current_account
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#users-get_account
   """
-  @spec get_account(Client, binary) :: any
+  @spec get_account(Client.t(), binary) :: Magpie.response()
   def get_account(client, id) do
     body = %{"account_id" => id}
     post(client, "/users/get_account", body)
   end
 
+  @doc """
+  Same as `get_account/2` but returns `{:ok, %Magpie.Account{}}`.
+  """
+  @spec get_account_to_struct(Client.t(), binary) ::
+          {:ok, Magpie.Account.t()} | {:error, Magpie.Error.t()}
   def get_account_to_struct(client, id) do
     case get_account(client, id) do
-      {:ok, response} -> to_struct(%Magpie.Account{}, response)
-      {{:status_code, status_code}, body} -> {:error, {status_code, body}}
+      {:ok, response} -> {:ok, to_struct(%Magpie.Account{}, response)}
+      {:error, error} -> {:error, error}
     end
   end
 
   @doc """
-  Get user current account
+  Get the current user's account.
 
   ## Example
 
@@ -37,25 +42,25 @@ defmodule Magpie.Users do
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#users-get_current_account
   """
-  @spec current_account(Client) :: String | {:error, {integer(), String.t()}}
+  @spec current_account(Client.t()) :: Magpie.response()
   def current_account(client) do
-    case post(client, "/users/get_current_account") do
-      {:ok, response} -> response
-      {{:status_code, status_code}, body} -> {:error, {status_code, body}}
-    end
+    post(client, "/users/get_current_account")
   end
 
+  @doc """
+  Same as `current_account/1` but returns `{:ok, %Magpie.Account{}}`.
+  """
+  @spec current_account_to_struct(Client.t()) ::
+          {:ok, Magpie.Account.t()} | {:error, Magpie.Error.t()}
   def current_account_to_struct(client) do
-    try do
-      current_account(client)
-      |> then(&to_struct(%Magpie.Account{}, &1))
-    rescue
-      error -> {:error, error}
+    case current_account(client) do
+      {:ok, response} -> {:ok, to_struct(%Magpie.Account{}, response)}
+      {:error, error} -> {:error, error}
     end
   end
 
   @doc """
-  Get user space usage
+  Get the current user's space usage.
 
   ## Example
 
@@ -63,40 +68,36 @@ defmodule Magpie.Users do
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#users-get_space_usage
   """
-  @spec get_space_usage(Client) :: any
+  @spec get_space_usage(Client.t()) :: Magpie.response()
   def get_space_usage(client) do
-    case post(client, "/users/get_space_usage") do
-      {:ok, response} -> response
-      {{:status_code, status_code}, body} -> {:error, {status_code, body}}
-    end
+    post(client, "/users/get_space_usage")
   end
 
+  @doc """
+  Same as `get_space_usage/1` but returns `{:ok, %Magpie.SpaceUsage{}}`.
+  """
+  @spec get_space_usage_to_struct(Client.t()) ::
+          {:ok, Magpie.SpaceUsage.t()} | {:error, Magpie.Error.t()}
   def get_space_usage_to_struct(client) do
-    try do
-      get_space_usage(client)
-      |> then(&to_struct(%Magpie.SpaceUsage{}, &1))
-    rescue
-      error -> {:error, error}
+    case get_space_usage(client) do
+      {:ok, response} -> {:ok, to_struct(%Magpie.SpaceUsage{}, response)}
+      {:error, error} -> {:error, error}
     end
   end
 
   @doc """
-  Get user account batch by account_ids.List of user account identifiers
+  Get user accounts in batch by their account ids.
 
   ## Example
 
-    Magpie.Users.get_account_batch client,  ["12345", "6789"]
+    Magpie.Users.get_account_batch client, ["dbid:1", "dbid:2"]
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#users-get_account_batch
   """
-  @spec get_account_batch(Client, binary) :: any
+  @spec get_account_batch(Client.t(), [binary]) :: Magpie.response()
   def get_account_batch(client, account_ids) do
     body = %{"account_ids" => account_ids}
-
-    case post(client, "/users/get_account_batch", body) do
-      {:ok, response} -> response
-      {{:status_code, status_code}, body} -> {:error, {status_code, body}}
-    end
+    post(client, "/users/get_account_batch", body)
   end
 
   @doc """

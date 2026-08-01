@@ -19,20 +19,8 @@ defmodule Magpie.Pager do
   your own with `stream/3`.
 
   Because a `Stream` cannot return an error tuple mid-enumeration, API
-  errors raise `Magpie.Pager.Error` (carrying the status and body) while
-  the stream is being consumed.
+  errors raise `Magpie.Error` while the stream is being consumed.
   """
-
-  defmodule Error do
-    @moduledoc """
-    Raised when a page request fails while a paginated stream is consumed.
-    """
-    defexception [:status, :body]
-
-    @impl true
-    def message(%__MODULE__{status: status, body: body}),
-      do: "Dropbox returned status #{status} while paginating: #{inspect(body)}"
-  end
 
   @doc """
   Builds a lazy `Stream` of items out of a paginated endpoint.
@@ -77,8 +65,8 @@ defmodule Magpie.Pager do
     {items, next_acc(Map.get(page, cursor_key), Map.get(page, has_more_key))}
   end
 
-  defp emit({{:status_code, status}, body}, _items_key, _cursor_key, _has_more_key),
-    do: raise(Error, status: status, body: body)
+  defp emit({:error, %Magpie.Error{} = error}, _items_key, _cursor_key, _has_more_key),
+    do: raise(error)
 
   # has_more absent: keep going while there is a cursor
   defp next_acc(nil, _has_more), do: :done

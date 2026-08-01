@@ -69,7 +69,7 @@ defmodule MagpieFlowsTest do
         respond_failing_append(conn, conn.request_path)
       end)
 
-      assert {{:status_code, 409}, _} =
+      assert {:error, %Magpie.Error{status: 409}} =
                Magpie.Files.upload_file(@client, "/big.bin", local,
                  session_threshold: 1,
                  chunk_size: 5
@@ -138,14 +138,14 @@ defmodule MagpieFlowsTest do
       refute_received {:page_request, "/2/files/list_folder/continue"}
     end
 
-    test "raises Magpie.Pager.Error when a page request fails" do
+    test "raises Magpie.Error when a page request fails" do
       Req.Test.stub(Magpie, fn conn ->
         conn
         |> Plug.Conn.put_status(409)
         |> Req.Test.json(%{"error_summary" => "path/not_found/"})
       end)
 
-      assert_raise Magpie.Pager.Error, ~r/409/, fn ->
+      assert_raise Magpie.Error, ~r/409/, fn ->
         @client |> Magpie.Files.ListFolder.stream("/missing") |> Enum.to_list()
       end
     end
@@ -230,8 +230,8 @@ defmodule MagpieFlowsTest do
       failed = fn _client, _id -> {:ok, %{".tag" => "failed", "failed" => %{}}} end
       assert {:ok, %{".tag" => "failed"}} = Magpie.Async.await(@client, "j", failed)
 
-      api_error = fn _client, _id -> {{:status_code, 409}, %{"error_summary" => "x"}} end
-      assert {{:status_code, 409}, _} = Magpie.Async.await(@client, "j", api_error)
+      api_error = fn _client, _id -> {:error, %Magpie.Error{status: 409, summary: "x"}} end
+      assert {:error, %Magpie.Error{status: 409}} = Magpie.Async.await(@client, "j", api_error)
     end
 
     test "works end-to-end against a stubbed batch endpoint" do

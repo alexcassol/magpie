@@ -25,17 +25,18 @@ defmodule Magpie.Sharing do
   end
 
   @doc """
-  Create shared link returns SharedLink struct
+  Same as `create_shared_link/3` but returns `{:ok, %Magpie.SharedLink{}}`.
 
   ## Example
 
     Magpie.Sharing.create_shared_link_to_struct client, "/Path"
   """
-  @spec create_shared_link_to_struct(Client, binary) :: SharedLink | any
+  @spec create_shared_link_to_struct(Client.t(), binary) ::
+          {:ok, Magpie.SharedLink.t()} | {:error, Magpie.Error.t()}
   def create_shared_link_to_struct(client, path) do
     case create_shared_link(client, path) do
-      {:ok, response} -> to_struct(%Magpie.SharedLink{}, response)
-      {{:status_code, status_code}, body} -> {:error, {status_code, body}}
+      {:ok, response} -> {:ok, to_struct(%Magpie.SharedLink{}, response)}
+      {:error, error} -> {:error, error}
     end
   end
 
@@ -308,7 +309,7 @@ defmodule Magpie.Sharing do
   @doc """
   Returns a lazy `Stream` over **all** shared folders of the current user,
   fetching pages through `list_folders/2` + `list_folders_continue/2` on
-  demand. Raises `Magpie.Pager.Error` if a page request fails.
+  demand. Raises `Magpie.Error` if a page request fails.
 
   ## Example
 

@@ -57,8 +57,8 @@ defmodule Magpie.MixProject do
         Guides: ~r/guides\/.*/
       ],
       groups_for_modules: [
-        Core: [Magpie, Magpie.Client, Magpie.Utils],
-        "High-level flows": [Magpie.Async, Magpie.Pager, Magpie.Pager.Error],
+        Core: [Magpie, Magpie.Client, Magpie.Error, Magpie.Utils],
+        "High-level flows": [Magpie.Async, Magpie.Pager],
         Files: ~r/Magpie\.Files.*/,
         Sharing: [Magpie.Sharing],
         "Users & Account": [

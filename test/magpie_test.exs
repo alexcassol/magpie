@@ -31,14 +31,14 @@ defmodule MagpieTest do
                Magpie.post(@client, "/files/create_folder_v2", %{"path" => "/Photos"})
     end
 
-    test "returns {{:status_code, code}, body} on API errors" do
+    test "returns {:error, %Magpie.Error{}} on API errors" do
       Req.Test.stub(Magpie, fn conn ->
         conn
         |> Plug.Conn.put_status(409)
         |> Req.Test.json(%{"error_summary" => "path/conflict/folder/.."})
       end)
 
-      assert {{:status_code, 409}, %{"error_summary" => _}} =
+      assert {:error, %Magpie.Error{status: 409, summary: "path/conflict" <> _}} =
                Magpie.post(@client, "/files/create_folder_v2", %{"path" => "/Photos"})
     end
   end
@@ -104,7 +104,8 @@ defmodule MagpieTest do
         Plug.Conn.send_resp(conn, 200, "file-contents")
       end)
 
-      assert %{body: "file-contents", headers: _} = Magpie.Files.download(@client, "/backup.zip")
+      assert {:ok, %{body: "file-contents", headers: _}} =
+               Magpie.Files.download(@client, "/backup.zip")
     end
   end
 
@@ -143,7 +144,7 @@ defmodule MagpieTest do
         Req.Test.json(conn, %{"account_id" => "dbid:123", "email" => "user@example.com"})
       end)
 
-      assert %{"account_id" => "dbid:123"} = Magpie.Users.current_account(@client)
+      assert {:ok, %{"account_id" => "dbid:123"}} = Magpie.Users.current_account(@client)
     end
 
     test "current_account/1 returns error tuple on failure" do
@@ -153,10 +154,11 @@ defmodule MagpieTest do
         |> Req.Test.json(%{"error_summary" => "invalid_access_token/"})
       end)
 
-      assert {:error, {401, %{"error_summary" => _}}} = Magpie.Users.current_account(@client)
+      assert {:error, %Magpie.Error{status: 401, summary: "invalid_access_token/"}} =
+               Magpie.Users.current_account(@client)
     end
 
-    test "get_space_usage/1 and get_account_batch/2 unwrap successful responses" do
+    test "get_space_usage/1 and get_account_batch/2 return ok tuples" do
       Req.Test.stub(Magpie, fn conn ->
         case conn.request_path do
           "/2/users/get_space_usage" -> Req.Test.json(conn, %{"used" => 10})
@@ -164,8 +166,10 @@ defmodule MagpieTest do
         end
       end)
 
-      assert %{"used" => 10} = Magpie.Users.get_space_usage(@client)
-      assert [%{"account_id" => "dbid:1"}] = Magpie.Users.get_account_batch(@client, ["dbid:1"])
+      assert {:ok, %{"used" => 10}} = Magpie.Users.get_space_usage(@client)
+
+      assert {:ok, [%{"account_id" => "dbid:1"}]} =
+               Magpie.Users.get_account_batch(@client, ["dbid:1"])
     end
 
     test "current_account_to_struct/1 and get_space_usage_to_struct/1 build structs" do
@@ -179,10 +183,10 @@ defmodule MagpieTest do
         end
       end)
 
-      assert %Magpie.Account{account_id: "dbid:1", email: "a@b.com"} =
+      assert {:ok, %Magpie.Account{account_id: "dbid:1", email: "a@b.com"}} =
                Magpie.Users.current_account_to_struct(@client)
 
-      assert %Magpie.SpaceUsage{used: 10} = Magpie.Users.get_space_usage_to_struct(@client)
+      assert {:ok, %Magpie.SpaceUsage{used: 10}} = Magpie.Users.get_space_usage_to_struct(@client)
     end
 
     test "get_account_to_struct/2 builds a struct and rescues failures" do
@@ -191,14 +195,15 @@ defmodule MagpieTest do
         Req.Test.json(conn, %{"account_id" => "dbid:9"})
       end)
 
-      assert %Magpie.Account{account_id: "dbid:9"} =
+      assert {:ok, %Magpie.Account{account_id: "dbid:9"}} =
                Magpie.Users.get_account_to_struct(@client, "dbid:9")
 
       Req.Test.stub(Magpie, fn conn ->
         conn |> Plug.Conn.put_status(409) |> Req.Test.json(%{"error_summary" => "no/"})
       end)
 
-      assert {:error, _} = Magpie.Users.get_account_to_struct(@client, "dbid:9")
+      assert {:error, %Magpie.Error{status: 409}} =
+               Magpie.Users.get_account_to_struct(@client, "dbid:9")
     end
   end
 
@@ -208,7 +213,7 @@ defmodule MagpieTest do
         Req.Test.json(conn, %{"id" => "id:1", "name" => "Backup", "path_lower" => "/backup"})
       end)
 
-      assert %Magpie.Folder{id: "id:1", name: "Backup"} =
+      assert {:ok, %Magpie.Folder{id: "id:1", name: "Backup"}} =
                Magpie.Files.create_folder_to_struct(@client, "/Backup")
     end
 
@@ -219,7 +224,8 @@ defmodule MagpieTest do
         |> Req.Test.json(%{"error_summary" => "path_lookup/not_found/"})
       end)
 
-      assert {:error, {409, _}} = Magpie.Files.delete_folder_to_struct(@client, "/x")
+      assert {:error, %Magpie.Error{status: 409}} =
+               Magpie.Files.delete_folder_to_struct(@client, "/x")
     end
 
     test "Sharing.create_shared_link_to_struct/2 returns a SharedLink struct" do
@@ -227,7 +233,7 @@ defmodule MagpieTest do
         Req.Test.json(conn, %{"url" => "https://dbx/s/x", "path" => "/x"})
       end)
 
-      assert %Magpie.SharedLink{url: "https://dbx/s/x"} =
+      assert {:ok, %Magpie.SharedLink{url: "https://dbx/s/x"}} =
                Magpie.Sharing.create_shared_link_to_struct(@client, "/x")
     end
   end
@@ -253,7 +259,7 @@ defmodule MagpieTest do
         |> Req.Test.json(%{"error_summary" => "path/not_found/"})
       end)
 
-      assert {{:status_code, 409}, _} = Magpie.Files.download(@client, "/missing.txt")
+      assert {:error, %Magpie.Error{status: 409}} = Magpie.Files.download(@client, "/missing.txt")
     end
   end
 

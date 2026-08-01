@@ -19,10 +19,10 @@ defmodule Magpie do
   @default_base_url "https://api.dropboxapi.com/2"
   @default_upload_url "https://content.dropboxapi.com/2/"
 
-  @type response :: {:ok, term()} | {{:status_code, integer()}, term()}
+  @type response :: {:ok, term()} | {:error, Magpie.Error.t()}
 
   @type response_download ::
-          %{body: binary(), headers: list() | map()} | {{:status_code, integer()}, term()}
+          {:ok, %{body: binary(), headers: list() | map()}} | {:error, Magpie.Error.t()}
 
   @doc "Base URL for RPC endpoints."
   def base_url, do: Application.get_env(:magpie, :base_url, @default_base_url)
@@ -55,14 +55,14 @@ defmodule Magpie do
   def process_response(%Req.Response{status: 200, body: body}), do: {:ok, body}
 
   def process_response(%Req.Response{status: status, body: body}),
-    do: {{:status_code, status}, body}
+    do: {:error, Magpie.Error.new(status, body)}
 
   @spec download_response(Req.Response.t()) :: response_download
   def download_response(%Req.Response{status: 200, body: body, headers: headers}),
-    do: %{body: body, headers: headers}
+    do: {:ok, %{body: body, headers: headers}}
 
   def download_response(%Req.Response{status: status, body: body}),
-    do: {{:status_code, status}, body}
+    do: {:error, Magpie.Error.new(status, body)}
 
   def post_request(req, url, body \\ "", headers \\ [])
 

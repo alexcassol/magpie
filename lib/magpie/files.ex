@@ -28,7 +28,7 @@ defmodule Magpie.Files do
   end
 
   @doc """
-  Create folder returns Folder struct
+  Same as `create_folder/2` but returns `{:ok, %Magpie.Folder{}}`.
 
   ## Example
 
@@ -36,11 +36,12 @@ defmodule Magpie.Files do
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-create_folder
   """
-  @spec create_folder_to_struct(Client.t(), binary) :: Folder | any
+  @spec create_folder_to_struct(Client.t(), binary) ::
+          {:ok, Magpie.Folder.t()} | {:error, Magpie.Error.t()}
   def create_folder_to_struct(client, path) do
     case create_folder(client, path) do
-      {:ok, response} -> to_struct(%Magpie.Folder{}, response)
-      {{:status_code, status_code}, body} -> {:error, {status_code, body}}
+      {:ok, response} -> {:ok, to_struct(%Magpie.Folder{}, response)}
+      {:error, error} -> {:error, error}
     end
   end
 
@@ -63,18 +64,20 @@ defmodule Magpie.Files do
   end
 
   @doc """
-  Delete folder returns Folder struct
+  Same as `delete_folder/2` but returns `{:ok, %Magpie.Folder{}}`.
 
   ## Example
 
     Magpie.Files.delete_folder_to_struct client, "/Path"
 
-  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-delete
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-delete_v2
   """
+  @spec delete_folder_to_struct(Client.t(), binary) ::
+          {:ok, Magpie.Folder.t()} | {:error, Magpie.Error.t()}
   def delete_folder_to_struct(client, path) do
     case delete_folder(client, path) do
-      {:ok, response} -> to_struct(%Magpie.Folder{}, response)
-      {{:status_code, status_code}, body} -> {:error, {status_code, body}}
+      {:ok, response} -> {:ok, to_struct(%Magpie.Folder{}, response)}
+      {:error, error} -> {:error, error}
     end
   end
 
@@ -156,7 +159,7 @@ defmodule Magpie.Files do
   @doc """
   Returns a lazy `Stream` over **all** search matches, fetching pages
   through `search/3` + `search_continue/2` on demand. Raises
-  `Magpie.Pager.Error` if a page request fails.
+  `Magpie.Error` if a page request fails.
 
   ## Example
 
@@ -214,8 +217,8 @@ defmodule Magpie.Files do
       (`start` → `append_v2` × N → `finish`) in chunks of `:chunk_size`
       bytes, without ever loading the whole file into memory.
 
-  Returns `{:ok, file_metadata}` on success, the API error tuple on Dropbox
-  errors, or `{:error, posix}` when the local file cannot be read.
+  Returns `{:ok, file_metadata}` on success, `{:error, %Magpie.Error{}}` on
+  Dropbox errors, or `{:error, posix}` when the local file cannot be read.
 
   ## Options
 

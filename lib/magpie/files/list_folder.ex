@@ -23,7 +23,7 @@ defmodule Magpie.Files.ListFolder do
   @doc """
   Returns a lazy `Stream` over **all** entries of a folder, fetching pages
   through `list_folder/2` + `list_folder_continue/2` on demand — no cursor
-  handling needed. Raises `Magpie.Pager.Error` if a page request fails.
+  handling needed. Raises `Magpie.Error` if a page request fails.
 
   ## Example
 

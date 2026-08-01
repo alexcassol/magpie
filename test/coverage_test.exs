@@ -200,7 +200,7 @@ defmodule MagpieCoverageTest do
         Plug.Conn.send_resp(conn, 200, "bytes")
       end)
 
-      assert %{body: "bytes"} = apply(mod, fun, [@client | args]),
+      assert {:ok, %{body: "bytes"}} = apply(mod, fun, [@client | args]),
              "#{inspect(mod)}.#{fun} failed"
     end
   end

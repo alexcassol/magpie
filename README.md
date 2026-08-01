@@ -49,10 +49,10 @@ Magpie.Users.current_account(client)
 Magpie.Files.upload(client, "/Backup/report.pdf", "priv/report.pdf")
 
 # Download a file
-%{body: contents} = Magpie.Files.download(client, "/Backup/report.pdf")
+{:ok, %{body: contents}} = Magpie.Files.download(client, "/Backup/report.pdf")
 ```
 
-Successful calls return `{:ok, body}`; API errors return `{{:status_code, code}, body}`.
+Every call returns `{:ok, result}` on success or `{:error, %Magpie.Error{}}` on API errors — with the HTTP `status`, Dropbox's `error_summary` and the full error `body`.
 
 ## High-level flows
 
