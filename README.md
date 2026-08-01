@@ -1,5 +1,9 @@
 # Magpie 🐦
 
+[![CI](https://github.com/alexcassol/magpie/actions/workflows/ci.yml/badge.svg)](https://github.com/alexcassol/magpie/actions/workflows/ci.yml)
+[![Coverage Status](https://coveralls.io/repos/github/alexcassol/magpie/badge.svg?branch=master)](https://coveralls.io/github/alexcassol/magpie?branch=master)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Elixir client for the [Dropbox API v2](https://www.dropbox.com/developers/documentation/http/documentation), built on [Req](https://hexdocs.pm/req).
 
 Like the bird, Magpie collects and stashes your things — in your Dropbox.
@@ -50,6 +54,27 @@ Magpie.Files.upload(client, "/Backup/report.pdf", "priv/report.pdf")
 
 Successful calls return `{:ok, body}`; API errors return `{{:status_code, code}, body}`.
 
+## High-level flows
+
+Magpie automates the multi-endpoint dances the Dropbox API expects from you
+(see the [Examples guide](guides/examples.md) for more):
+
+```elixir
+# Smart upload: single request for small files, chunked upload session for
+# big ones — streaming from disk, picked automatically
+{:ok, _} = Magpie.Files.upload_file(client, "/Backup/db.dump", "priv/db.dump")
+
+# Lazy pagination: cursors and /continue calls hidden behind a Stream
+client
+|> Magpie.Files.ListFolder.stream("/Photos")
+|> Stream.filter(&(&1[".tag"] == "file"))
+|> Enum.take(100)
+
+# Async batch jobs: polling with exponential backoff
+{:ok, launch} = Magpie.Files.MoveBatch.move_batch(client, entries)
+{:ok, result} = Magpie.Async.await(client, launch, &Magpie.Files.MoveBatch.check/2)
+```
+
 ## Covered endpoints
 
 Magpie covers **all current user-scoped routes** of the Dropbox API v2 (132 routes as of August 2026), verified against the official [dropbox-api-spec](https://github.com/dropbox/dropbox-api-spec):
@@ -65,10 +90,11 @@ Dropbox Business (`/team/*`) routes are out of scope.
 
 ## Testing
 
-The test suite runs entirely offline using [`Req.Test`](https://hexdocs.pm/req/Req.Test.html) stubs:
+The test suite runs entirely offline using [`Req.Test`](https://hexdocs.pm/req/Req.Test.html) stubs — every endpoint wrapper is verified against the exact route it must hit, and the high-level flows are tested end-to-end:
 
 ```sh
-mix test
+mix test            # run the suite
+mix coveralls       # run with coverage report (currently ~94% line coverage)
 ```
 
 ## Origin
