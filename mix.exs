@@ -9,7 +9,7 @@ defmodule ElixirDropbox.Mixfile do
     [
       app: :elixir_dropbox,
       version: "0.0.8",
-      elixir: "~> 1.13",
+      elixir: "~> 1.15",
       name: "ElixirDropbox",
       elixirc_paths: elixirc_paths(Mix.env()),
       description: @description,
@@ -45,9 +45,7 @@ defmodule ElixirDropbox.Mixfile do
       {:exvcr, "~> 0.10", only: :test},
       {:excoveralls, "~> 0.7", only: :test},
       {:credo, "~> 0.9.0-rc1", only: [:dev, :test], runtime: false},
-      {:req, "~> 0.5.0"},
-      {:telemetry_metrics, "~> 0.6"},
-      {:telemetry_poller, "~> 1.0"}
+      {:req, "~> 0.7"}
     ]
   end
 
