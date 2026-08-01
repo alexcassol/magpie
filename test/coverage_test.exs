@@ -119,7 +119,47 @@ defmodule MagpieCoverageTest do
     {Magpie.Sharing, :check_job_status, ["j"], "/sharing/check_job_status"},
     {Magpie.Sharing, :check_remove_member_job_status, ["j"],
      "/sharing/check_remove_member_job_status"},
-    {Magpie.Sharing, :check_share_job_status, ["j"], "/sharing/check_share_job_status"}
+    {Magpie.Sharing, :check_share_job_status, ["j"], "/sharing/check_share_job_status"},
+    {Magpie.Files, :copy, ["/a", "/b"], "/files/copy_v2"},
+    {Magpie.Files, :restore, ["/a", "rev1"], "/files/restore"},
+    {Magpie.Files, :delete_folder, ["/a"], "/files/delete_v2"},
+    {Magpie.Files, :get_metadata, ["/a"], "/files/get_metadata"},
+    {Magpie.Files, :get_temporary_link, ["/a"], "/files/get_temporary_link"},
+    {Magpie.Files, :get_thumbnail_batch, [[%{"path" => "/a.jpg"}]], "/files/get_thumbnail_batch"},
+    {Magpie.Files.ListFolder, :list_folder_continue, ["c"], "/files/list_folder/continue"},
+    {Magpie.Files.ListFolder, :list_revisions, ["/a"], "/files/list_revisions"},
+    {Magpie.Files.ListFolder, :get_latest_cursor, ["/a"], "/files/list_folder/get_latest_cursor"},
+    {Magpie.Files.ListFolder, :longpoll, ["c"], "/files/list_folder/longpoll"},
+    {Magpie.Files.CopyBatch, :copy_batch, ["/a", "/b"], "/files/copy_batch_v2"},
+    {Magpie.Files.CopyBatch, :check, ["j"], "/files/copy_batch/check_v2"},
+    {Magpie.Files.CopyReference, :get, ["/a"], "/files/copy_reference/get"},
+    {Magpie.Files.CopyReference, :save, ["ref", "/a"], "/files/copy_reference/save"},
+    {Magpie.Files.DeleteBatch, :delete_batch, [[%{"path" => "/a"}]], "/files/delete_batch"},
+    {Magpie.Files.DeleteBatch, :check, ["j"], "/files/delete_batch/check"},
+    {Magpie.Files.SaveUrl, :save_url, ["/a", "http://x"], "/files/save_url"},
+    {Magpie.Files.SaveUrl, :check_job_status, ["j"], "/files/save_url/check_job_status"},
+    {Magpie.Files.UploadSession, :finish_batch, [[]], "/files/upload_session/finish_batch_v2"},
+    {Magpie.Files.UploadSession, :finish_batch_check, ["j"],
+     "/files/upload_session/finish_batch/check"},
+    {Magpie.FileRequests, :create, ["t", "/dest", %{"deadline" => "2027-01-01T00:00:00Z"}],
+     "/file_requests/create"},
+    {Magpie.FileRequests, :get, ["id"], "/file_requests/get"},
+    {Magpie.FileRequests, :list, [], "/file_requests/list"},
+    {Magpie.FileRequests, :update, ["id", "t", "/dest", %{}], "/file_requests/update"},
+    {Magpie.Users, :get_account, ["dbid:x"], "/users/get_account"},
+    {Magpie.Paper.Docs, :docs_archive, ["d"], "/paper/docs/archive"},
+    {Magpie.Paper.Docs, :get_folder_info, ["d"], "/paper/docs/get_folder_info"},
+    {Magpie.Paper.Docs, :docs_list, [], "/paper/docs/list"},
+    {Magpie.Paper.Docs, :permanently_delete, ["d"], "/paper/docs/permanently_delete"},
+    {Magpie.Paper.FolderUsers, :list, ["d"], "/paper/docs/folder_users/list"},
+    {Magpie.Paper.FolderUsers, :list_continue, ["d", "c"],
+     "/paper/docs/folder_users/list/continue"},
+    {Magpie.Paper.SharingPolicy, :get, ["d"], "/paper/docs/sharing_policy/get"},
+    {Magpie.Paper.SharingPolicy, :set, ["d", %{}], "/paper/docs/sharing_policy/set"},
+    {Magpie.Paper.Users, :add, ["d", [], "hi", false], "/paper/docs/users/add"},
+    {Magpie.Paper.Users, :list, ["d"], "/paper/docs/users/list"},
+    {Magpie.Paper.Users, :list_continue, ["d", "c"], "/paper/docs/users/list/continue"},
+    {Magpie.Paper.Users, :remove, ["d", %{}], "/paper/docs/users/remove"}
   ]
 
   # download-style content endpoints: args go in the Dropbox-API-Arg header
@@ -129,7 +169,10 @@ defmodule MagpieCoverageTest do
     {Magpie.Files, :export, ["/a"], "/files/export"},
     {Magpie.Files, :get_thumbnail_v2, [%{".tag" => "path", "path" => "/a.jpg"}],
      "/files/get_thumbnail_v2"},
-    {Magpie.Sharing, :get_shared_link_file, ["https://u"], "/sharing/get_shared_link_file"}
+    {Magpie.Sharing, :get_shared_link_file, ["https://u"], "/sharing/get_shared_link_file"},
+    {Magpie.Files, :get_thumbnail, ["/a.jpg"], "/files/get_thumbnail"},
+    {Magpie.Files, :get_preview, ["/a.pdf"], "/files/get_preview"},
+    {Magpie.Paper.Docs, :docs_download, ["d", "markdown"], "/paper/docs/download"}
   ]
 
   test "every RPC wrapper hits its exact route" do
