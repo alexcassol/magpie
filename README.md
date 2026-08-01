@@ -15,12 +15,10 @@ Add `magpie` to your dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:magpie, git: "https://github.com/alexcassol/magpie.git"}
+    {:magpie, "~> 0.1"}
   ]
 end
 ```
-
-> Publishing to Hex is planned; once published this becomes `{:magpie, "~> 0.1"}`.
 
 No configuration is required. The Dropbox endpoints can be overridden (rarely needed), and extra `Req` options can be merged into every request:
 

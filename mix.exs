@@ -51,6 +51,7 @@ defmodule Magpie.MixProject do
       extras: [
         "README.md",
         "guides/examples.md",
+        "CHANGELOG.md",
         "LICENSE"
       ],
       groups_for_extras: [
