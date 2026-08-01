@@ -2,8 +2,8 @@
 /ebin
 /cover
 /deps
+/doc
 erl_crash.dump
 *.ez
-docs
 mix.lock
 /.elixir_ls
