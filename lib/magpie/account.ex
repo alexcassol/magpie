@@ -1,5 +1,6 @@
 defmodule Magpie.Account do
   @moduledoc """
+  Struct for a Dropbox user account (`/users/get_account`).
   """
   defstruct account_id: nil,
             account_type: nil,

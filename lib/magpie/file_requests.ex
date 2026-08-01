@@ -1,5 +1,6 @@
 defmodule Magpie.FileRequests do
   @moduledoc """
+  Endpoints for Dropbox file requests (`/file_requests/*`).
   """
   import Magpie
 

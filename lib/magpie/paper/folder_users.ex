@@ -1,5 +1,6 @@
 defmodule Magpie.Paper.FolderUsers do
   @moduledoc """
+  Dropbox Paper folder users endpoints. Deprecated by Dropbox (see `Magpie.Paper.Docs`).
   """
   import Magpie
 

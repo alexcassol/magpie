@@ -1,7 +1,11 @@
 defmodule Magpie.Paper.Docs do
   @moduledoc """
-  This namespace contains endpoints and data types for
-  managing docs and folders in Dropbox Paper.
+  Dropbox Paper docs endpoints.
+
+  > #### Deprecated {: .warning}
+  >
+  > The whole `/paper/docs/*` API is deprecated by Dropbox in favor of
+  > Paper docs stored as regular files (`/files/paper/*`).
   """
   import Magpie
 
@@ -41,7 +45,7 @@ defmodule Magpie.Paper.Docs do
 
     upload_request(
       client,
-      Application.get_env(:magpie, :base_url),
+      base_url(),
       "/paper/docs/create",
       file,
       headers
@@ -67,7 +71,7 @@ defmodule Magpie.Paper.Docs do
 
     download_request(
       client,
-      Application.get_env(:magpie, :base_url),
+      base_url(),
       "/paper/docs/download",
       [],
       headers
@@ -149,7 +153,7 @@ defmodule Magpie.Paper.Docs do
 
     upload_request(
       client,
-      Application.get_env(:magpie, :base_url),
+      base_url(),
       "/paper/docs/update",
       file,
       headers

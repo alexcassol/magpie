@@ -1,5 +1,6 @@
 defmodule Magpie.Files.ListFolder do
   @moduledoc """
+  Folder listing and change-cursor endpoints (`/files/list_folder*`).
   """
   alias Magpie.Client
   import Magpie

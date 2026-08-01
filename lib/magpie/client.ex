@@ -1,5 +1,8 @@
 defmodule Magpie.Client do
   @moduledoc """
+  Holds the Dropbox access token used to authenticate every request.
+
+      client = Magpie.Client.new("ACCESS_TOKEN")
   """
   defstruct access_token: nil
 

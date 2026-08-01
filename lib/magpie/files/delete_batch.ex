@@ -1,5 +1,6 @@
 defmodule Magpie.Files.DeleteBatch do
   @moduledoc """
+  Batch delete operations (`/files/delete_batch`).
   """
   import Magpie
 

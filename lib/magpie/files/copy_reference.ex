@@ -1,5 +1,6 @@
 defmodule Magpie.Files.CopyReference do
   @moduledoc """
+  Copy references let you copy files across Dropbox accounts (`/files/copy_reference/*`).
   """
   import Magpie
 

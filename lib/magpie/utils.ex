@@ -1,5 +1,6 @@
 defmodule Magpie.Utils do
   @moduledoc """
+  Small helpers shared across the API modules.
   """
   def to_struct(kind, attrs) do
     struct = struct(kind)

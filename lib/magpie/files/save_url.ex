@@ -1,5 +1,6 @@
 defmodule Magpie.Files.SaveUrl do
   @moduledoc """
+  Save a URL's contents into Dropbox (`/files/save_url`).
   """
   import Magpie
 

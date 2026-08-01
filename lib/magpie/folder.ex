@@ -1,5 +1,6 @@
 defmodule Magpie.Folder do
   @moduledoc """
+  Struct for folder metadata returned by the files endpoints.
   """
   defstruct id: nil,
             name: nil,
