@@ -13,7 +13,7 @@ defmodule Magpie.Pager do
       |> Stream.filter(&(&1[".tag"] == "file"))
       |> Enum.take(100)
 
-  Ready-made wrappers: `Magpie.Files.ListFolder.stream/3`,
+  Ready-made wrappers: `Magpie.Files.ListFolder.stream/2`,
   `Magpie.Files.search_stream/3`, `Magpie.Sharing.list_folders_stream/2` and
   `Magpie.FileRequests.stream/2`. For any other paginated endpoint, build
   your own with `stream/3`.
