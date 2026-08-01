@@ -22,11 +22,9 @@ defmodule Magpie.Users do
   end
 
   def get_account_to_struct(client, id) do
-    try do
-      get_account(client, id)
-      |> then(&to_struct(%Magpie.Account{}, &1))
-    rescue
-      error -> {:error, error}
+    case get_account(client, id) do
+      {:ok, response} -> to_struct(%Magpie.Account{}, response)
+      {{:status_code, status_code}, body} -> {:error, {status_code, body}}
     end
   end
 
