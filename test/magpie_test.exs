@@ -53,6 +53,50 @@ defmodule MagpieTest do
       assert {:ok, %{"metadata" => _}} = Magpie.Files.create_folder(@client, "/Backup")
     end
 
+    @tag :tmp_dir
+    test "upload/3 streams the local file as the raw request body", %{tmp_dir: dir} do
+      local = Path.join(dir, "hello.txt")
+      File.write!(local, "hello dropbox")
+
+      Req.Test.stub(Magpie, fn conn ->
+        assert conn.request_path == "/2/files/upload"
+        assert Plug.Conn.get_req_header(conn, "content-type") == ["application/octet-stream"]
+
+        [arg] = Plug.Conn.get_req_header(conn, "dropbox-api-arg")
+        assert %{"path" => "/hello.txt", "mode" => "add"} = Jason.decode!(arg)
+
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        assert body == "hello dropbox"
+
+        Req.Test.json(conn, %{"name" => "hello.txt", "size" => 13})
+      end)
+
+      assert {:ok, %{"name" => "hello.txt"}} = Magpie.Files.upload(@client, "/hello.txt", local)
+    end
+
+    test "move/3 posts to /files/move_v2" do
+      Req.Test.stub(Magpie, fn conn ->
+        assert conn.request_path == "/2/files/move_v2"
+        Req.Test.json(conn, %{"metadata" => %{"name" => "algebra"}})
+      end)
+
+      assert {:ok, %{"metadata" => _}} = Magpie.Files.move(@client, "/math", "/algebra")
+    end
+
+    test "search/3 posts query and options to /files/search_v2" do
+      Req.Test.stub(Magpie, fn conn ->
+        assert conn.request_path == "/2/files/search_v2"
+
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        assert %{"query" => "report", "options" => %{"path" => "/docs"}} = Jason.decode!(raw)
+
+        Req.Test.json(conn, %{"matches" => []})
+      end)
+
+      assert {:ok, %{"matches" => []}} =
+               Magpie.Files.search(@client, "report", %{"path" => "/docs"})
+    end
+
     test "download/2 returns raw body and headers" do
       Req.Test.stub(Magpie, fn conn ->
         assert conn.request_path == "/2/files/download"
@@ -73,6 +117,22 @@ defmodule MagpieTest do
 
       assert {:ok, %{"entries" => [%{"name" => "Backup"}]}} =
                Magpie.Files.ListFolder.list_folder(@client, "")
+    end
+  end
+
+  describe "Sharing" do
+    test "create_shared_link/3 posts settings to create_shared_link_with_settings" do
+      Req.Test.stub(Magpie, fn conn ->
+        assert conn.request_path == "/2/sharing/create_shared_link_with_settings"
+
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        assert %{"path" => "/report.pdf", "settings" => %{}} = Jason.decode!(raw)
+
+        Req.Test.json(conn, %{"url" => "https://www.dropbox.com/s/abc/report.pdf"})
+      end)
+
+      assert {:ok, %{"url" => "https://" <> _}} =
+               Magpie.Sharing.create_shared_link(@client, "/report.pdf")
     end
   end
 

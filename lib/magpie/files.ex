@@ -96,11 +96,11 @@ defmodule Magpie.Files do
 
     Magpie.Files.move(client, "/Homework/math", "/Homework/algebra")
 
-  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-move
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-move_v2
   """
   def move(client, from_path, to_path) do
     body = %{"from_path" => from_path, "to_path" => to_path}
-    post(client, "/files/move", body)
+    post(client, "/files/move_v2", body)
   end
 
   @doc """
@@ -120,22 +120,32 @@ defmodule Magpie.Files do
   @doc """
   Searches for files and folders.
 
+  `options` accepts the `SearchOptions` fields, e.g.
+  `%{"path" => "/Photos", "max_results" => 100, "filename_only" => true}`.
+
   ## Example
 
-    Magpie.Files.search(client, "/root", "word.docx")
+    Magpie.Files.search(client, "word.docx", %{"path" => "/root"})
 
-  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-search
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-search_v2
   """
-  def search(client, path, query, start \\ 0, max_results \\ 100, mode \\ "filename") do
-    body = %{
-      "path" => path,
-      "query" => query,
-      "start" => start,
-      "max_results" => max_results,
-      "mode" => mode
-    }
+  def search(client, query, options \\ %{}) do
+    body = %{"query" => query, "options" => options}
+    post(client, "/files/search_v2", body)
+  end
 
-    post(client, "/files/search", body)
+  @doc """
+  Fetches the next page of search results returned from `search/3`.
+
+  ## Example
+
+    Magpie.Files.search_continue(client, cursor)
+
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-search-continue_v2
+  """
+  def search_continue(client, cursor) do
+    body = %{"cursor" => cursor}
+    post(client, "/files/search/continue_v2", body)
   end
 
   @doc """
@@ -162,7 +172,7 @@ defmodule Magpie.Files do
 
     upload_request(
       client,
-      Application.get_env(:magpie, :upload_url),
+      upload_url(),
       "files/upload",
       file,
       headers
@@ -187,7 +197,7 @@ defmodule Magpie.Files do
 
     download_request(
       client,
-      Application.get_env(:magpie, :upload_url),
+      upload_url(),
       "files/download",
       [],
       headers
@@ -214,7 +224,7 @@ defmodule Magpie.Files do
 
     download_request(
       client,
-      Application.get_env(:magpie, :upload_url),
+      upload_url(),
       "files/get_thumbnail",
       [],
       headers
@@ -236,7 +246,7 @@ defmodule Magpie.Files do
 
     post_url(
       client,
-      Application.get_env(:magpie, :upload_url),
+      upload_url(),
       "/files/get_thumbnail_batch",
       body
     )
@@ -260,7 +270,7 @@ defmodule Magpie.Files do
 
     download_request(
       client,
-      Application.get_env(:magpie, :upload_url),
+      upload_url(),
       "files/get_preview",
       [],
       headers

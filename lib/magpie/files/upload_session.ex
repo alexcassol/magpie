@@ -26,7 +26,7 @@ defmodule Magpie.Files.UploadSession do
 
     upload_request(
       client,
-      Application.get_env(:magpie, :upload_url),
+      upload_url(),
       "files/upload_session/start",
       file,
       headers
@@ -57,7 +57,7 @@ defmodule Magpie.Files.UploadSession do
 
     upload_request(
       client,
-      Application.get_env(:magpie, :upload_url),
+      upload_url(),
       "files/upload_session/append_v2",
       file,
       headers
@@ -98,7 +98,7 @@ defmodule Magpie.Files.UploadSession do
 
     upload_request(
       client,
-      Application.get_env(:magpie, :upload_url),
+      upload_url(),
       "files/upload_session/finish",
       file,
       headers
@@ -113,11 +113,11 @@ defmodule Magpie.Files.UploadSession do
     entries = [entry]
     Magpie.Files.UploadSession.finish_batch client, entries
 
-  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-upload_session-finish
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-upload_session-finish_batch_v2
   """
   def finish_batch(client, entries) do
     body = %{"entries" => entries}
-    post(client, "/files/upload_session/finish_batch", body)
+    post(client, "/files/upload_session/finish_batch_v2", body)
   end
 
   @doc """

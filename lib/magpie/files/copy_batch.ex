@@ -1,5 +1,6 @@
 defmodule Magpie.Files.CopyBatch do
   @moduledoc """
+  Batch copy operations (`/files/copy_batch_v2`).
   """
   import Magpie
 
@@ -10,37 +11,28 @@ defmodule Magpie.Files.CopyBatch do
 
     Magpie.Files.CopyBatch.copy_batch(client, "/Temp/", "/Tmp")
 
-  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-copy_batch
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-copy_batch_v2
   """
-  def copy_batch(
-        client,
-        from_path,
-        to_path,
-        allow_shared_folder \\ false,
-        autorename \\ false,
-        allow_ownership_transfer \\ false
-      ) do
+  def copy_batch(client, from_path, to_path, autorename \\ false) do
     body = %{
       "entries" => [%{"from_path" => from_path, "to_path" => to_path}],
-      "allow_shared_folder" => allow_shared_folder,
-      "autorename" => autorename,
-      "allow_ownership_transfer" => allow_ownership_transfer
+      "autorename" => autorename
     }
 
-    post(client, "/files/copy_batch", body)
+    post(client, "/files/copy_batch_v2", body)
   end
 
   @doc """
-  Copy multiple files or folders to different locations at once in the user's Dropbox.
+  Returns the status of an asynchronous job for `copy_batch/4`.
 
   ## Example
 
     Magpie.Files.CopyBatch.check(client, "")
 
-  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-copy_batch
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-copy_batch-check_v2
   """
   def check(client, async_job_id) do
     body = %{"async_job_id" => async_job_id}
-    post(client, "/files/copy_batch/check", body)
+    post(client, "/files/copy_batch/check_v2", body)
   end
 end

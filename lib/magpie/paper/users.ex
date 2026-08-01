@@ -1,5 +1,6 @@
 defmodule Magpie.Paper.Users do
   @moduledoc """
+  Dropbox Paper doc users endpoints. Deprecated by Dropbox (see `Magpie.Paper.Docs`).
   """
   import Magpie
 
@@ -49,7 +50,7 @@ defmodule Magpie.Paper.Users do
   """
   def list_continue(client, doc_id, cursor) do
     body = %{"doc_id" => doc_id, "cursor" => cursor}
-    post(client, "/paper/docs/users/continue", body)
+    post(client, "/paper/docs/users/list/continue", body)
   end
 
   @doc """
