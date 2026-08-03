@@ -57,7 +57,7 @@ Every call returns `{:ok, result}` on success or `{:error, %Magpie.Error{}}` on 
 ## High-level flows
 
 Magpie automates the multi-endpoint dances the Dropbox API expects from you
-(see the [Examples guide](guides/examples.md) for more):
+(see the [Examples guide](https://magpie.hexdocs.pm/examples.html) for more):
 
 ```elixir
 # Smart upload: single request for small files, chunked upload session for
