@@ -17,7 +17,7 @@ Add `magpie` to your dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:magpie, "~> 0.1"}
+    {:magpie, "~> 0.2"}
   ]
 end
 ```
