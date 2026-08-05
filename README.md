@@ -97,6 +97,40 @@ mix test            # run the suite
 mix coveralls       # run with coverage report (currently ~94% line coverage)
 ```
 
+## Roadmap
+
+Magpie already covers every user-scoped route of the Dropbox API v2. The focus
+now is on the higher-level ergonomics that real applications need:
+
+### 0.2.0 — OAuth 2 & token refresh
+
+- [ ] `Magpie.Auth` — authorization URL builder, PKCE helpers, code-for-token exchange
+- [ ] Automatic access-token refresh (proactive, with margin, and reactive on
+      `expired_access_token`) with single-flight guarantees
+- [ ] `Magpie.Auth.TokenProvider` behaviour + supervised `TokenServer`, so apps
+      can plug their own token persistence
+- [ ] OAuth guide (Dropbox deprecated long-lived tokens — this makes Magpie
+      production-ready for 24/7 applications)
+
+### 0.3.0 — Change watching
+
+- [ ] `Magpie.Watcher` — supervised process wrapping `list_folder/longpoll`
+      (cursor management, backoff, reconnection) that delivers folder change
+      events as messages — "when a file lands in `/Inbox`, trigger a pipeline"
+
+### Backlog
+
+- [ ] Streaming download to disk (`download_file/3` mirroring `upload_file/4`,
+      without loading the file into memory)
+- [ ] Dropbox `content_hash` helper — verify integrity after transfers and skip
+      uploads of unchanged files (`verify: true` / `skip_unchanged: true`)
+- [ ] Rate-limit aware retries — honor `Retry-After` on 429/503 out of the box
+- [ ] `:telemetry` events for every request
+- [ ] `upload_many/3` — concurrent multi-file upload via upload session batches
+
+Suggestions and PRs are welcome — open an [issue](https://github.com/alexcassol/magpie/issues).
+
+
 ## Origin
 
 Magpie started as a fork of [sger/elixir_dropbox](https://hex.pm/packages/elixir_dropbox), which is no longer maintained (its GitHub repository has been deleted). The code has since been modernized: HTTPoison/Poison were replaced with Req/Jason, and the test suite was rewritten with Req.Test. Credit and thanks to the original Elixir Dropbox contributors.
