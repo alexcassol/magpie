@@ -33,3 +33,88 @@ jobs:
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Publishes to Hex when @version in mix.exs names a release that is not
+  # out yet. `needs: test` is the gate: nothing ships unless the whole
+  # suite is green. Any other push to main is a no-op.
+  publish:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.20"
+          otp-version: "29"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('mix.exs') }}
+
+      - name: Read the version from mix.exs
+        id: version
+        run: |
+          version=$(sed -n 's/^  @version "\(.*\)"/\1/p' mix.exs)
+          test -n "$version" || { echo "::error::could not read @version from mix.exs"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # hex.pm is the source of truth: re-running the workflow, or pushing
+      # anything else to main, must not try to publish twice.
+      - name: Check whether it is already on Hex
+        id: released
+        run: |
+          version="${{ steps.version.outputs.version }}"
+
+          if curl -sf "https://hex.pm/api/packages/magpie/releases/$version" -o /dev/null; then
+            echo "magpie $version is already on Hex — nothing to publish"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "magpie $version is not on Hex yet — publishing"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.released.outputs.publish == 'true'
+        run: mix deps.get
+
+      # Publishes the package and the docs. The tag comes after, so a
+      # failed publish does not leave one behind.
+      - name: Publish to Hex
+        if: steps.released.outputs.publish == 'true'
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+        run: mix hex.publish --yes
+
+      - name: Tag the release
+        if: steps.released.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+
+      # Release notes are the matching CHANGELOG.md section
+      - name: Create the GitHub release
+        if: steps.released.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { flag = 1; next }
+            flag && /^## \[/ { exit }
+            flag { print }
+          ' CHANGELOG.md > release-notes.md
+
+          if [ -s release-notes.md ]; then
+            gh release create "v$VERSION" --title "v$VERSION" --notes-file release-notes.md
+          else
+            echo "::warning::no CHANGELOG.md section for $VERSION, generating notes from commits"
+            gh release create "v$VERSION" --title "v$VERSION" --generate-notes
+          fi
