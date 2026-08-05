@@ -33,8 +33,22 @@ defmodule Magpie.Error do
   @doc """
   Builds a `Magpie.Error` from an HTTP status and a decoded response body,
   extracting Dropbox's `error_summary` when present.
+
+  OAuth 2 errors (`Magpie.Auth`) have no `error_summary` — their `error`
+  field is a plain string such as `"invalid_grant"`, which is used as the
+  summary instead.
+
+      iex> Magpie.Error.new(409, %{"error_summary" => "path/conflict/folder/.."}).summary
+      "path/conflict/folder/.."
+
+      iex> Magpie.Error.new(400, %{"error" => "invalid_grant"}).summary
+      "invalid_grant"
+
   """
   def new(status, %{"error_summary" => summary} = body),
+    do: %__MODULE__{status: status, body: body, summary: summary}
+
+  def new(status, %{"error" => summary} = body) when is_binary(summary),
     do: %__MODULE__{status: status, body: body, summary: summary}
 
   def new(status, body), do: %__MODULE__{status: status, body: body, summary: nil}

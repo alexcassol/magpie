@@ -1,7 +1,7 @@
 defmodule Magpie.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.2.0"
   @source_url "https://github.com/alexcassol/magpie"
 
   def project do
@@ -50,6 +50,7 @@ defmodule Magpie.MixProject do
       source_ref: "v#{@version}",
       extras: [
         "README.md",
+        "guides/oauth.md",
         "guides/examples.md",
         "CHANGELOG.md",
         "LICENSE"
@@ -59,13 +60,19 @@ defmodule Magpie.MixProject do
       ],
       groups_for_modules: [
         Core: [Magpie, Magpie.Client, Magpie.Error, Magpie.Utils],
+        "OAuth & tokens": [
+          Magpie.Auth,
+          Magpie.Auth.Token,
+          Magpie.Auth.TokenProvider,
+          Magpie.Auth.TokenServer,
+          Magpie.Auth.StaticToken
+        ],
         "High-level flows": [Magpie.Async, Magpie.Pager],
         Files: ~r/Magpie\.Files.*/,
         Sharing: [Magpie.Sharing],
         "Users & Account": [
           Magpie.Users,
           Magpie.Accounts,
-          Magpie.Auth,
           Magpie.Check,
           Magpie.Contacts,
           Magpie.OpenId

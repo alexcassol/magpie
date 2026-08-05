@@ -34,7 +34,17 @@ config :magpie,
 ## Usage
 
 ```elixir
+# A static access token — fine for scripts, but Dropbox expires it in ~4h
 client = Magpie.Client.new("DROPBOX_ACCESS_TOKEN")
+
+# A refresh token — Magpie mints access tokens as needed, so this client
+# keeps working forever (see the OAuth guide)
+client =
+  Magpie.Client.new(
+    refresh_token: System.fetch_env!("DROPBOX_REFRESH_TOKEN"),
+    app_key: System.fetch_env!("DROPBOX_APP_KEY"),
+    app_secret: System.fetch_env!("DROPBOX_APP_SECRET")
+  )
 
 # Who am I?
 Magpie.Users.current_account(client)
@@ -53,6 +63,32 @@ Magpie.Files.upload(client, "/Backup/report.pdf", "priv/report.pdf")
 ```
 
 Every call returns `{:ok, result}` on success or `{:error, %Magpie.Error{}}` on API errors — with the HTTP `status`, Dropbox's `error_summary` and the full error `body`.
+
+## OAuth 2 & token refresh
+
+Dropbox stopped issuing long-lived access tokens: they expire after about four hours. Magpie handles the whole OAuth 2 flow and keeps tokens fresh on its own — proactively before they expire, and by replaying the request if Dropbox rejects one anyway. Concurrent requests never trigger parallel refreshes.
+
+```elixir
+# Build the authorization URL (PKCE optional, offline access by default)
+{verifier, challenge} = Magpie.Auth.pkce_pair()
+Magpie.Auth.authorize_url(app_key, redirect_uri: callback_url, code_challenge: challenge)
+
+# Exchange the code Dropbox sent back for a refresh token
+{:ok, token} = Magpie.Auth.exchange_code(app_key, code, code_verifier: verifier)
+
+# Keep a supervised token holder, and build clients from it
+children = [
+  {Magpie.Auth.TokenServer,
+   name: MyApp.DropboxToken,
+   app_key: app_key,
+   app_secret: app_secret,
+   refresh_token: token.refresh_token}
+]
+
+client = Magpie.Client.new(token_provider: {Magpie.Auth.TokenServer, MyApp.DropboxToken})
+```
+
+Tokens can live wherever you want — implement `Magpie.Auth.TokenProvider` and pass `token_provider: {MyProvider, arg}`. See the [OAuth guide](https://magpie.hexdocs.pm/oauth.html).
 
 ## High-level flows
 
@@ -102,14 +138,14 @@ mix coveralls       # run with coverage report (currently ~94% line coverage)
 Magpie already covers every user-scoped route of the Dropbox API v2. The focus
 now is on the higher-level ergonomics that real applications need:
 
-### 0.2.0 — OAuth 2 & token refresh
+### 0.2.0 — OAuth 2 & token refresh ✅
 
-- [ ] `Magpie.Auth` — authorization URL builder, PKCE helpers, code-for-token exchange
-- [ ] Automatic access-token refresh (proactive, with margin, and reactive on
+- [x] `Magpie.Auth` — authorization URL builder, PKCE helpers, code-for-token exchange
+- [x] Automatic access-token refresh (proactive, with margin, and reactive on
       `expired_access_token`) with single-flight guarantees
-- [ ] `Magpie.Auth.TokenProvider` behaviour + supervised `TokenServer`, so apps
+- [x] `Magpie.Auth.TokenProvider` behaviour + supervised `TokenServer`, so apps
       can plug their own token persistence
-- [ ] OAuth guide (Dropbox deprecated long-lived tokens — this makes Magpie
+- [x] OAuth guide (Dropbox deprecated long-lived tokens — this makes Magpie
       production-ready for 24/7 applications)
 
 ### 0.3.0 — Change watching

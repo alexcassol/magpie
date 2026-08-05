@@ -4,7 +4,16 @@ Real-world recipes for common Dropbox tasks with Magpie. All examples assume
 a client:
 
 ```elixir
+# Short-lived: Dropbox access tokens expire in about 4 hours
 client = Magpie.Client.new(System.fetch_env!("DROPBOX_ACCESS_TOKEN"))
+
+# Long-running: Magpie keeps the access token fresh from a refresh token
+client =
+  Magpie.Client.new(
+    refresh_token: System.fetch_env!("DROPBOX_REFRESH_TOKEN"),
+    app_key: System.fetch_env!("DROPBOX_APP_KEY"),
+    app_secret: System.fetch_env!("DROPBOX_APP_SECRET")
+  )
 ```
 
 ## Checking your credentials
@@ -15,7 +24,57 @@ client = Magpie.Client.new(System.fetch_env!("DROPBOX_ACCESS_TOKEN"))
 
 # Who am I?
 {:ok, %{"email" => email}} = Magpie.Users.current_account(client)
+
+# A token Dropbox no longer accepts comes back as a plain error
+{:error, %Magpie.Error{status: 401, summary: "invalid_access_token/.."}} =
+  Magpie.Check.user(Magpie.Client.new("nope"))
 ```
+
+## Staying authenticated for more than 4 hours
+
+Anything that runs unattended — a nightly backup, a worker, a daemon —
+needs a refresh token instead of an access token. Put the token holder in
+your supervision tree and point clients at it:
+
+```elixir
+# lib/my_app/application.ex
+children = [
+  {Magpie.Auth.TokenServer,
+   name: MyApp.DropboxToken,
+   app_key: System.fetch_env!("DROPBOX_APP_KEY"),
+   app_secret: System.fetch_env!("DROPBOX_APP_SECRET"),
+   refresh_token: System.fetch_env!("DROPBOX_REFRESH_TOKEN")}
+]
+```
+
+```elixir
+# Cheap to build — the token lives in the server, not in the struct
+client = Magpie.Client.new(token_provider: {Magpie.Auth.TokenServer, MyApp.DropboxToken})
+
+# Runs at 3am on day 40 just like it did on day 1
+{:ok, _} = Magpie.Files.upload_file(client, "/Backup/db.dump", "priv/db.dump")
+```
+
+The access token is renewed a few minutes before it expires, concurrent
+requests share a single refresh, and a request rejected as
+`expired_access_token` is refreshed and replayed once — none of which you
+have to write.
+
+Getting that refresh token takes a browser round-trip, once:
+
+```elixir
+# 1. Open this URL, approve the app, copy the code Dropbox shows
+Magpie.Auth.authorize_url(app_key)
+
+# 2. Trade the code for tokens and store the refresh one as a secret
+{:ok, token} = Magpie.Auth.exchange_code(app_key, code, app_secret: app_secret)
+token.refresh_token
+```
+
+The [OAuth guide](oauth.html) covers the whole picture: the web redirect
+flow, PKCE for apps that cannot keep a secret, persisting tokens with
+`:on_refresh`, and writing your own `Magpie.Auth.TokenProvider` when tokens
+live in your database.
 
 ## Uploading files
 

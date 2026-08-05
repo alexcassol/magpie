@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-05
+
+OAuth 2 support. Dropbox access tokens expire after ~4 hours, so a static
+token is not enough for anything that runs unattended — Magpie now handles
+the whole flow and keeps tokens fresh on its own.
+
+### Added
+
+- `Magpie.Auth` — OAuth 2 flow helpers: `authorize_url/2` (offline access
+  by default), `pkce_pair/0` and `pkce_challenge/1` for public apps,
+  `exchange_code/3` and `refresh/3`
+- `Magpie.Auth.Token` — token struct with an absolute `expires_at` computed
+  from Dropbox's `expires_in`
+- `Magpie.Auth.TokenProvider` — behaviour that decouples the client from
+  where tokens live, with two implementations: `Magpie.Auth.StaticToken`
+  and `Magpie.Auth.TokenServer`
+- `Magpie.Auth.TokenServer` — supervised token holder that refreshes
+  proactively (configurable `:refresh_margin`, default 300s), serializes
+  concurrent refreshes into a single request, survives failed refreshes and
+  can persist tokens through an `:on_refresh` callback
+- `Magpie.Client.new/1` accepts a refresh token
+  (`refresh_token:`/`app_key:` + `app_secret:` or `pkce: true`, starting a
+  linked `TokenServer`) or an explicit `token_provider: {module, arg}`
+- Transparent recovery from expired tokens: requests rejected with HTTP 401
+  `expired_access_token` are refreshed and replayed once. Streamed upload
+  bodies cannot be replayed and are not retried — the proactive refresh
+  covers them
+- OAuth guide on HexDocs: getting a refresh token from the App Console, the
+  web redirect flow, PKCE, supervision, persistence and custom providers
+
+### Changed
+
+- `Magpie.Client` gained a `token_provider` field; `access_token` is kept
+  and `Magpie.Client.new("ACCESS_TOKEN")` behaves exactly as before
+- `Magpie.Error.new/2` uses the OAuth `error` field (e.g. `"invalid_grant"`)
+  as the error `summary` when there is no `error_summary`
+
 ## [0.1.0] - 2026-08-01
 
 First release of Magpie 🐦 — a modern, actively maintained Elixir client for
@@ -56,4 +93,5 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
+[0.2.0]: https://github.com/alexcassol/magpie/releases/tag/v0.2.0
 [0.1.0]: https://github.com/alexcassol/magpie/releases/tag/v0.1.0
