@@ -64,6 +64,48 @@ defmodule MagpieAuthTest do
       assert url =~ "client_id=APP%20KEY%26x"
       assert url =~ "redirect_uri=https%3A%2F%2Fmyapp.com%2Fcb%3Fa%3Db"
     end
+
+    test "extra_params are appended after the standard params and encoded" do
+      url =
+        Auth.authorize_url("APP_KEY",
+          redirect_uri: "https://myapp.com/cb",
+          extra_params: [force_reapprove: true, locale: "pt_BR", require_role: :personal]
+        )
+
+      # booleans and atoms render as strings; order is standard-then-extra
+      assert url =~ "myapp.com%2Fcb&force_reapprove=true&locale=pt_BR&require_role=personal"
+    end
+
+    test "extra_params accepts a map and percent-encodes values" do
+      url = Auth.authorize_url("APP_KEY", extra_params: %{"locale" => "pt BR"})
+
+      assert url =~ "&locale=pt%20BR"
+    end
+
+    test "extra_params cannot override params the function sets" do
+      assert_raise ArgumentError, ~r/"client_id"/, fn ->
+        Auth.authorize_url("APP_KEY", extra_params: [client_id: "EVIL"])
+      end
+
+      assert_raise ArgumentError, ~r/"token_access_type"/, fn ->
+        Auth.authorize_url("APP_KEY", extra_params: %{"token_access_type" => "online"})
+      end
+
+      assert_raise ArgumentError, ~r/"code_challenge"/, fn ->
+        Auth.authorize_url("APP_KEY",
+          code_challenge: "abc",
+          extra_params: [code_challenge: "evil"]
+        )
+      end
+
+      assert_raise ArgumentError, ~r/"state"/, fn ->
+        Auth.authorize_url("APP_KEY", state: "csrf", extra_params: [state: "evil"])
+      end
+    end
+
+    test "no extra_params leaves the URL byte-identical" do
+      assert Auth.authorize_url("APP_KEY", extra_params: []) == Auth.authorize_url("APP_KEY")
+    end
   end
 
   describe "pkce_pair/0" do

@@ -11,13 +11,18 @@ defmodule MagpieTokenServerTest do
   @opts [app_key: "APP_KEY", app_secret: "APP_SECRET", refresh_token: "RT"]
 
   describe "start_link/1" do
-    test "requires an app key and a refresh token" do
+    test "requires an app key" do
       assert_raise ArgumentError, ~r/requires a :app_key/, fn ->
         TokenServer.start_link(Keyword.delete(@opts, :app_key))
       end
+    end
 
-      assert_raise ArgumentError, ~r/requires a :refresh_token/, fn ->
-        TokenServer.start_link(Keyword.delete(@opts, :refresh_token))
+    test "the refresh token is optional, but must be a string when given" do
+      assert {:ok, pid} = TokenServer.start_link(Keyword.delete(@opts, :refresh_token))
+      assert Process.alive?(pid)
+
+      assert_raise ArgumentError, ~r/:refresh_token to be a string/, fn ->
+        TokenServer.start_link(Keyword.put(@opts, :refresh_token, :not_a_string))
       end
     end
 
@@ -161,6 +166,139 @@ defmodule MagpieTokenServerTest do
     end
   end
 
+  describe "unconfigured server" do
+    test "answers no_refresh_token without touching the network, and stays alive" do
+      stub_token("sl.NEVER")
+
+      server = start_server!(refresh_token: nil)
+
+      assert {:error, %Magpie.Error{status: 401, summary: "no_refresh_token"}} =
+               TokenServer.fetch_token(server)
+
+      assert {:error, %Magpie.Error{summary: "no_refresh_token"}} =
+               TokenServer.refresh_token(server)
+
+      assert TokenServer.token(server) == nil
+      assert Process.alive?(server)
+      assert request_count() == 0
+    end
+  end
+
+  describe "set_refresh_token/3" do
+    test "configures an unconfigured server; the next fetch refreshes with it" do
+      stub_recording_refresh_token()
+
+      server = start_server!(refresh_token: nil)
+
+      assert :ok = TokenServer.set_refresh_token(server, "NEW_RT")
+      assert {:ok, "sl.minted-with-NEW_RT"} = TokenServer.fetch_token(server)
+      assert_receive {:refresh_with, "NEW_RT"}
+
+      assert %Token{refresh_token: "NEW_RT", access_token: "sl.minted-with-NEW_RT"} =
+               TokenServer.token(server)
+    end
+
+    test "a seeded valid pair is used without refreshing" do
+      stub_token("sl.REFRESHED")
+
+      server = start_server!(refresh_token: nil)
+
+      assert :ok =
+               TokenServer.set_refresh_token(server, "NEW_RT",
+                 access_token: "sl.SEEDED",
+                 expires_at: in_seconds(3600)
+               )
+
+      assert {:ok, "sl.SEEDED"} = TokenServer.fetch_token(server)
+      assert request_count() == 0
+    end
+
+    test "a seeded expired pair triggers a refresh" do
+      stub_token("sl.REFRESHED")
+
+      server = start_server!(refresh_token: nil)
+
+      assert :ok =
+               TokenServer.set_refresh_token(server, "NEW_RT",
+                 access_token: "sl.STALE",
+                 expires_at: in_seconds(-10)
+               )
+
+      assert {:ok, "sl.REFRESHED"} = TokenServer.fetch_token(server)
+      assert request_count() == 1
+    end
+
+    test "an incomplete pair is discarded rather than seeded" do
+      stub_token("sl.REFRESHED")
+
+      server = start_server!(refresh_token: nil)
+
+      assert :ok = TokenServer.set_refresh_token(server, "NEW_RT", access_token: "sl.NO_EXPIRY")
+
+      assert %Token{access_token: nil, expires_at: nil} = TokenServer.token(server)
+      assert {:ok, "sl.REFRESHED"} = TokenServer.fetch_token(server)
+    end
+
+    test "re-authorization drops the cached token of the previous grant" do
+      stub_recording_refresh_token()
+
+      server = start_server!(access_token: "sl.CACHED", expires_at: in_seconds(3600))
+
+      assert {:ok, "sl.CACHED"} = TokenServer.fetch_token(server)
+      assert :ok = TokenServer.set_refresh_token(server, "NEW_RT")
+
+      assert %Token{access_token: nil, refresh_token: "NEW_RT"} = TokenServer.token(server)
+      assert {:ok, "sl.minted-with-NEW_RT"} = TokenServer.fetch_token(server)
+      assert_receive {:refresh_with, "NEW_RT"}
+    end
+
+    test "an in-flight refresh cannot clobber a token set while it ran" do
+      test_pid = self()
+
+      # The stub blocks inside the server process until the test releases it,
+      # so the interleaving is deterministic — no sleeps involved.
+      Req.Test.stub(Magpie, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        refresh_token = URI.decode_query(body)["refresh_token"]
+        send(test_pid, {:refresh_with, refresh_token})
+
+        receive do
+          :continue -> :ok
+        end
+
+        Req.Test.json(conn, %{
+          "access_token" => "sl.minted-with-#{refresh_token}",
+          "expires_in" => 14_400
+        })
+      end)
+
+      server = start_server!([])
+
+      # 1. A fetch starts a refresh with the old token and blocks in the stub
+      slow_fetch = Task.async(fn -> TokenServer.fetch_token(server) end)
+      assert_receive {:refresh_with, "RT"}
+
+      # 2. A re-authorization arrives while that refresh is in flight
+      set = Task.async(fn -> TokenServer.set_refresh_token(server, "NEW_RT") end)
+      wait_for_queued_call(server)
+
+      # 3. Only now the old refresh completes
+      send(server, :continue)
+
+      assert Task.await(slow_fetch) == {:ok, "sl.minted-with-RT"}
+      assert Task.await(set) == :ok
+
+      # The late result must not survive: cache dropped, new token in place
+      assert %Token{access_token: nil, refresh_token: "NEW_RT"} = TokenServer.token(server)
+
+      next_fetch = Task.async(fn -> TokenServer.fetch_token(server) end)
+      assert_receive {:refresh_with, "NEW_RT"}
+      send(server, :continue)
+
+      assert Task.await(next_fetch) == {:ok, "sl.minted-with-NEW_RT"}
+    end
+  end
+
   describe ":on_refresh" do
     test "is called with the new token" do
       stub_token("sl.REFRESHED")
@@ -201,6 +339,30 @@ defmodule MagpieTokenServerTest do
       send(test_pid, :token_request)
       Req.Test.json(conn, %{"access_token" => access_token, "expires_in" => 14_400})
     end)
+  end
+
+  defp stub_recording_refresh_token do
+    test_pid = self()
+
+    Req.Test.stub(Magpie, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      refresh_token = URI.decode_query(body)["refresh_token"]
+      send(test_pid, {:refresh_with, refresh_token})
+
+      Req.Test.json(conn, %{
+        "access_token" => "sl.minted-with-#{refresh_token}",
+        "expires_in" => 14_400
+      })
+    end)
+  end
+
+  # Waits until the server has a pending GenServer call in its mailbox —
+  # while its current call sits blocked inside the stub.
+  defp wait_for_queued_call(server) do
+    case Process.info(server, :message_queue_len) do
+      {:message_queue_len, len} when len > 0 -> :ok
+      _ -> wait_for_queued_call(server)
+    end
   end
 
   defp in_seconds(seconds), do: DateTime.add(DateTime.utc_now(), seconds, :second)

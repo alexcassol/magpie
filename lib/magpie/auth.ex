@@ -76,6 +76,12 @@ defmodule Magpie.Auth do
     * `:code_challenge` — PKCE challenge from `pkce_pair/0`; adds
       `code_challenge_method=S256`
     * `:token_access_type` — `"offline"` (default), `"online"` or `"legacy"`
+    * `:extra_params` — keyword list or map of additional Dropbox
+      authorization params (`force_reapprove`, `locale`, `require_role`,
+      `disable_signup`, ...), appended after the standard ones. Values are
+      rendered with `to_string/1`, so booleans and atoms work. Params this
+      function already sets cannot be overridden — a collision raises
+      `ArgumentError`
 
   ## Examples
 
@@ -87,6 +93,11 @@ defmodule Magpie.Auth do
       ...>   scope: ["files.content.read", "files.content.write"]
       ...> )
       "https://www.dropbox.com/oauth2/authorize?client_id=APP_KEY&response_type=code&token_access_type=offline&redirect_uri=https%3A%2F%2Fmyapp.com%2Fcb&scope=files.content.read%20files.content.write"
+
+      iex> Magpie.Auth.authorize_url("APP_KEY",
+      ...>   extra_params: [force_reapprove: true, locale: "pt_BR"]
+      ...> )
+      "https://www.dropbox.com/oauth2/authorize?client_id=APP_KEY&response_type=code&token_access_type=offline&force_reapprove=true&locale=pt_BR"
 
   """
   @spec authorize_url(String.t(), keyword()) :: String.t()
@@ -101,6 +112,7 @@ defmodule Magpie.Auth do
       |> put_param(:state, opts[:state])
       |> put_param(:scope, scope_param(opts[:scope]))
       |> put_challenge(opts[:code_challenge])
+      |> put_extra_params(opts[:extra_params])
 
     oauth_authorize_url() <> "?" <> URI.encode_query(params, :rfc3986)
   end
@@ -225,6 +237,25 @@ defmodule Magpie.Auth do
 
   defp put_param(params, _key, nil), do: params
   defp put_param(params, key, value), do: params ++ [{key, value}]
+
+  defp put_extra_params(params, nil), do: params
+
+  defp put_extra_params(params, extra) when is_list(extra) or is_map(extra) do
+    # Extra params may only add — overriding a param this module builds
+    # (client_id, response_type, token_access_type, code_challenge, ...)
+    # would silently change the security properties of the flow.
+    taken = MapSet.new(params, fn {key, _value} -> to_string(key) end)
+
+    Enum.reduce(extra, params, fn {key, value}, acc ->
+      if MapSet.member?(taken, to_string(key)) do
+        raise ArgumentError,
+              "extra_params cannot override the #{inspect(to_string(key))} param — " <>
+                "it is set by authorize_url/2 itself"
+      end
+
+      acc ++ [{key, value}]
+    end)
+  end
 
   defp put_challenge(params, nil), do: params
 

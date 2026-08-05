@@ -289,12 +289,67 @@ stored = MyApp.Accounts.dropbox_token!()
 Pass `access_token` and `expires_at` together — a token whose expiry is
 unknown is refreshed right away, which is safe but pointless.
 
+### When the refresh token arrives at runtime
+
+Not every application knows its refresh token at boot. On a fresh install
+nobody has authorized Dropbox yet — the token only appears later, through
+your OAuth callback, and lives in your database from then on. The server
+handles this: start it **without** a refresh token and it sits in an
+*unconfigured* state, in the same static supervision tree as always:
+
+```elixir
+children = [
+  MyApp.Repo,
+  {Magpie.Auth.TokenServer,
+   name: MyApp.DropboxToken,
+   app_key: System.fetch_env!("DROPBOX_APP_KEY"),
+   app_secret: System.fetch_env!("DROPBOX_APP_SECRET"),
+   on_refresh: &MyApp.Accounts.store_dropbox_token/1},
+  MyAppWeb.Endpoint
+]
+```
+
+While unconfigured, every call through this provider fails fast with a
+pattern-matchable error — no HTTP involved:
+
+```elixir
+case Magpie.Users.current_account(client) do
+  {:ok, account} -> account
+  {:error, %Magpie.Error{summary: "no_refresh_token"}} -> :dropbox_not_connected
+  {:error, error} -> raise error
+end
+```
+
+Hand the server its token whenever you get one, with
+`Magpie.Auth.TokenServer.set_refresh_token/3`:
+
+```elixir
+# On boot, if a previous session stored one — run this after your storage
+# is up, e.g. right after Supervisor.start_link/2 returns (or from a Task
+# placed after the Repo in the tree). Seeding the pair skips a refresh:
+if stored = MyApp.Accounts.dropbox_token() do
+  Magpie.Auth.TokenServer.set_refresh_token(MyApp.DropboxToken, stored.refresh_token,
+    access_token: stored.access_token,
+    expires_at: stored.expires_at
+  )
+end
+
+# In the OAuth callback, right after the code exchange — this is also how
+# re-authorization works, no restart needed:
+{:ok, token} = Magpie.Auth.exchange_code(app_key(), code, app_secret: app_secret())
+:ok = Magpie.Auth.TokenServer.set_refresh_token(MyApp.DropboxToken, token.refresh_token)
+```
+
+`set_refresh_token/3` never calls Dropbox — it stores the token and lets
+the next `fetch_token/1` do the refresh (or use the seeded pair), so it is
+safe inside a web request. Replacing the token also drops any cached access
+token, which belonged to the previous authorization.
+
 ## Multiple accounts, or tokens in your database
 
 One `TokenServer` holds one account. If your app connects many Dropbox
-accounts, either start one server per account (a `DynamicSupervisor` and a
-`Registry` work well) or implement `Magpie.Auth.TokenProvider` yourself and
-let your database be the state:
+accounts, either start one server per account or implement
+`Magpie.Auth.TokenProvider` yourself and let your database be the state:
 
 ```elixir
 defmodule MyApp.DropboxTokens do

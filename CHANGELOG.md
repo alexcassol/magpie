@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-08-05
+
+### Added
+
+- `Magpie.Auth.TokenServer` no longer requires a refresh token at startup.
+  A server started without one sits in an *unconfigured* state — calls
+  return a pattern-matchable
+  `{:error, %Magpie.Error{summary: "no_refresh_token"}}` without touching
+  the network — and the new `set_refresh_token/3` configures it (or
+  replaces the token, for re-authorization) at any time, discarding any
+  cached access token unless a valid `access_token`/`expires_at` pair is
+  seeded. Fresh installs whose token arrives through the OAuth callback now
+  work from a plain static supervision tree
+- `Magpie.Auth.authorize_url/2` accepts `extra_params:` (keyword list or
+  map) for additional Dropbox authorization params such as
+  `force_reapprove`, `locale`, `require_role` and `disable_signup`.
+  Params the function already sets cannot be overridden — collisions raise
+  `ArgumentError`
+
 ## [0.2.0] - 2026-08-05
 
 OAuth 2 support. Dropbox access tokens expire after ~4 hours, so a static
@@ -93,5 +112,6 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
+[0.2.1]: https://github.com/alexcassol/magpie/releases/tag/v0.2.1
 [0.2.0]: https://github.com/alexcassol/magpie/releases/tag/v0.2.0
 [0.1.0]: https://github.com/alexcassol/magpie/releases/tag/v0.1.0

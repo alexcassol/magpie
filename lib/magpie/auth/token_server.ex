@@ -18,10 +18,18 @@ defmodule Magpie.Auth.TokenServer do
 
       client = Magpie.Client.new(token_provider: {Magpie.Auth.TokenServer, MyApp.DropboxToken})
 
+  The refresh token itself is optional at startup. A server started without
+  one sits in an *unconfigured* state — calls return
+  `{:error, %Magpie.Error{summary: "no_refresh_token"}}` until
+  `set_refresh_token/3` hands it a token. That makes a plain static
+  supervision tree work even on a fresh install, where the user has not
+  authorized the app yet; see the [OAuth guide](oauth.html).
+
   ## Options
 
     * `:app_key` — your Dropbox app key (required)
-    * `:refresh_token` — the long-lived refresh token (required)
+    * `:refresh_token` — the long-lived refresh token. Optional: without it
+      the server starts unconfigured, waiting for `set_refresh_token/3`
     * `:app_secret` — your app secret. Required unless `pkce: true`
     * `:pkce` — set to `true` for public apps, which authenticate with the
       app key alone and therefore have no secret
@@ -43,6 +51,10 @@ defmodule Magpie.Auth.TokenServer do
   replies `{:error, %Magpie.Error{}}` to the caller instead of crashing:
   a temporarily unreachable Dropbox should not take your supervision tree
   down, and the next call simply tries again.
+
+  `set_refresh_token/3` goes through the same serialization: it runs before
+  or after a refresh, never during one, so a refresh finishing around a
+  re-authorization can never resurrect the old token.
   """
 
   use GenServer
@@ -79,6 +91,12 @@ defmodule Magpie.Auth.TokenServer do
 
       {:ok, access_token} = Magpie.Auth.TokenServer.fetch_token(MyApp.DropboxToken)
 
+  An unconfigured server (no refresh token yet) answers with a
+  pattern-matchable error instead of calling Dropbox:
+
+      {:error, %Magpie.Error{summary: "no_refresh_token"}} =
+        Magpie.Auth.TokenServer.fetch_token(MyApp.DropboxToken)
+
   """
   @impl Magpie.Auth.TokenProvider
   @spec fetch_token(GenServer.server()) :: {:ok, String.t()} | {:error, Magpie.Error.t()}
@@ -98,29 +116,73 @@ defmodule Magpie.Auth.TokenServer do
   Returns the whole token currently held by the server, without refreshing.
 
   Handy for inspecting the expiry or persisting the token on shutdown.
+  Returns `nil` while the server is unconfigured.
   """
-  @spec token(GenServer.server()) :: Token.t()
-  def token(server), do: GenServer.call(server, :token)
+  @spec token(GenServer.server()) :: Token.t() | nil
+  def token(server), do: GenServer.call(server, :token, @call_timeout)
+
+  @doc """
+  Stores a (new) refresh token, configuring the server or replacing the
+  token it holds — the re-authorization case.
+
+  Any cached access token is discarded, since it belongs to the previous
+  authorization. If you already hold a valid pair, seed the cache to save
+  the first refresh — pass both options or neither:
+
+    * `:access_token` — a currently valid access token
+    * `:expires_at` — its absolute expiry, as a `DateTime`
+
+  Dropbox is not contacted: the next `fetch_token/1` performs the refresh
+  (or uses the seeded pair), so this is safe to call from a web request.
+
+      # OAuth callback, right after the code exchange
+      {:ok, token} = Magpie.Auth.exchange_code(app_key, code, app_secret: secret)
+      :ok = Magpie.Auth.TokenServer.set_refresh_token(MyApp.DropboxToken, token.refresh_token)
+
+      # On boot, from storage — seeded, so no refresh until it nears expiry
+      :ok =
+        Magpie.Auth.TokenServer.set_refresh_token(MyApp.DropboxToken, stored.refresh_token,
+          access_token: stored.access_token,
+          expires_at: stored.expires_at
+        )
+
+  """
+  @spec set_refresh_token(GenServer.server(), String.t(), keyword()) :: :ok
+  def set_refresh_token(server, refresh_token, opts \\ []) when is_binary(refresh_token) do
+    GenServer.call(server, {:set_refresh_token, refresh_token, opts}, @call_timeout)
+  end
 
   @impl GenServer
   def init(opts) do
+    token =
+      if refresh_token = opts[:refresh_token] do
+        %Token{
+          access_token: opts[:access_token],
+          refresh_token: refresh_token,
+          expires_at: opts[:expires_at]
+        }
+      end
+
     state = %{
       app_key: opts[:app_key],
       app_secret: opts[:app_secret],
       refresh_token: opts[:refresh_token],
       refresh_margin: Keyword.get(opts, :refresh_margin, @default_refresh_margin),
       on_refresh: opts[:on_refresh],
-      token: %Token{
-        access_token: opts[:access_token],
-        refresh_token: opts[:refresh_token],
-        expires_at: opts[:expires_at]
-      }
+      token: token
     }
 
     {:ok, state}
   end
 
+  # Unconfigured (no refresh token yet): a normal state on fresh installs,
+  # answered locally — no HTTP, no crash, no logging.
   @impl GenServer
+  def handle_call(call, _from, %{refresh_token: nil} = state)
+      when call in [:fetch_token, :refresh_token] do
+    {:reply, {:error, no_refresh_token_error()}, state}
+  end
+
   def handle_call(:fetch_token, _from, state) do
     if Token.fresh?(state.token, state.refresh_margin) do
       {:reply, {:ok, state.token.access_token}, state}
@@ -132,6 +194,30 @@ defmodule Magpie.Auth.TokenServer do
   def handle_call(:refresh_token, _from, state), do: do_refresh(state)
 
   def handle_call(:token, _from, state), do: {:reply, state.token, state}
+
+  # Race safety comes from serialization: refreshes run inside handle_call,
+  # so this clause executes strictly before or after any refresh — a refresh
+  # minted with the old token can never overwrite the state written here.
+  def handle_call({:set_refresh_token, refresh_token, opts}, _from, state) do
+    # Seed the cache only with a complete pair — an access token with an
+    # unknown expiry would be refreshed on first use anyway.
+    {access_token, expires_at} =
+      case {opts[:access_token], opts[:expires_at]} do
+        {access_token, %DateTime{} = expires_at} when is_binary(access_token) ->
+          {access_token, expires_at}
+
+        _ ->
+          {nil, nil}
+      end
+
+    token = %Token{
+      access_token: access_token,
+      refresh_token: refresh_token,
+      expires_at: expires_at
+    }
+
+    {:reply, :ok, %{state | refresh_token: refresh_token, token: token}}
+  end
 
   defp do_refresh(state) do
     case Auth.refresh(state.app_key, state.refresh_token, app_secret: state.app_secret) do
@@ -163,13 +249,30 @@ defmodule Magpie.Auth.TokenServer do
       :ok
   end
 
+  defp no_refresh_token_error do
+    %Magpie.Error{
+      status: 401,
+      summary: "no_refresh_token",
+      body: %{
+        "error" => "no_refresh_token",
+        "error_description" =>
+          "this TokenServer holds no refresh token yet — " <>
+            "call Magpie.Auth.TokenServer.set_refresh_token/3 after completing the OAuth flow"
+      }
+    }
+  end
+
   defp validate!(opts) do
-    Enum.each([:app_key, :refresh_token], fn key ->
-      unless is_binary(opts[key]) do
-        raise ArgumentError,
-              "Magpie.Auth.TokenServer requires a :#{key}, got: #{inspect(opts[key])}"
-      end
-    end)
+    unless is_binary(opts[:app_key]) do
+      raise ArgumentError,
+            "Magpie.Auth.TokenServer requires a :app_key, got: #{inspect(opts[:app_key])}"
+    end
+
+    unless is_nil(opts[:refresh_token]) or is_binary(opts[:refresh_token]) do
+      raise ArgumentError,
+            "Magpie.Auth.TokenServer expects :refresh_token to be a string, " <>
+              "got: #{inspect(opts[:refresh_token])}"
+    end
 
     unless is_binary(opts[:app_secret]) or opts[:pkce] == true do
       raise ArgumentError,
