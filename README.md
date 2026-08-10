@@ -17,7 +17,7 @@ Add `magpie` to your dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:magpie, "~> 0.2"}
+    {:magpie, "~> 0.3"}
   ]
 end
 ```
@@ -221,14 +221,22 @@ few things the official SDKs never shipped.
       dance for apps that obtain tokens via OAuth callback
 - [x] `authorize_url/2` `extra_params:` passthrough (`force_reapprove`, `locale`, …)
 
-### 0.3.0 — Typed metadata
+### 0.3.0 — Phoenix uploads ✅
+
+- [x] `Magpie.LiveView.UploadWriter` — stream a LiveView upload straight into a
+      Dropbox upload session, without spooling it to the server's disk
+- [x] `Magpie.LiveView.presign_upload/4` — direct browser → Dropbox uploads via
+      `get_temporary_upload_link/3`, so the bytes bypass your server entirely,
+      with the JS uploader entry shipped in `priv/static`
+
+### 0.4.0 — Typed metadata
 
 - [ ] Decode API responses into structs (`Magpie.FileMetadata`,
       `Magpie.FolderMetadata`, `Magpie.DeletedMetadata`) with proper types —
       `DateTime` timestamps, first-class `content_hash` — instead of raw maps
       with `".tag"` keys
 
-### 0.4.0 — Reacting to changes
+### 0.5.0 — Reacting to changes
 
 - [ ] `Magpie.Webhook` — what the official SDKs never shipped: verification
       challenge handling, constant-time `X-Dropbox-Signature` HMAC validation,
@@ -239,14 +247,6 @@ few things the official SDKs never shipped.
       events as messages — "when a file lands in `/Inbox`, trigger a pipeline"
 - [ ] Webhook → Watcher integration: use webhook notifications as the wake-up
       signal and `list_folder/continue` to fetch what actually changed
-
-### 0.5.0 — Phoenix uploads
-
-- [x] `Magpie.LiveView.UploadWriter` — stream a LiveView upload straight into a
-      Dropbox upload session, without spooling it to the server's disk
-- [x] `Magpie.LiveView.presign_upload/4` — direct browser → Dropbox uploads via
-      `get_temporary_upload_link/3`, so the bytes bypass your server entirely,
-      with the JS uploader entry shipped in `priv/static`
 
 ### Backlog
 
