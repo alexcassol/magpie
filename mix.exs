@@ -96,7 +96,10 @@ defmodule Magpie.MixProject do
     [
       maintainers: ["Alex Cassol"],
       licenses: ["MIT"],
-      links: %{"GitHub" => @source_url}
+      links: %{"GitHub" => @source_url},
+      # Hex's default file list leaves `guides/` out, so the package shipped
+      # without the very files the README links to.
+      files: ~w(lib guides mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
     ]
   end
 end
