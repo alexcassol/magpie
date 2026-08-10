@@ -111,6 +111,47 @@ client
 {:ok, result} = Magpie.Async.await(client, launch, &Magpie.Files.MoveBatch.check/2)
 ```
 
+## Phoenix & LiveView
+
+LiveView already owns the upload experience — `allow_upload/3`, drag & drop,
+progress, validation. Magpie doesn't try to replace any of it; it only fills
+the gap a Dropbox backend creates.
+
+From a controller there is nothing to learn: `Plug.Upload` hands you a path and
+`upload_file/4` takes it from there (single request or upload session, decided
+by size).
+
+```elixir
+def create(conn, %{"file" => %Plug.Upload{} = upload}) do
+  {:ok, metadata} =
+    Magpie.Files.upload_file(client, "/Uploads/" <> upload.filename, upload.path)
+end
+```
+
+In LiveView the same one-liner works inside `consume_uploaded_entry/3`, but the
+entry is spooled to a temporary file first — a 500 MB upload hits your disk in
+full before a single byte reaches Dropbox. `Magpie.LiveView.UploadWriter`
+removes that round trip, appending to an upload session as the chunks arrive:
+
+```elixir
+allow_upload(socket, :report,
+  accept: ~w(.pdf),
+  max_file_size: 500_000_000,
+  writer: fn _name, entry, _socket ->
+    {Magpie.LiveView.UploadWriter, client: client, path: "/Reports/" <> entry.client_name}
+  end
+)
+
+# The file is already committed — `meta/1` carries the Dropbox metadata
+consume_uploaded_entries(socket, :report, fn %{metadata: metadata}, _entry ->
+  {:ok, metadata}
+end)
+```
+
+Magpie does not depend on `:phoenix_live_view` — the behaviour is a plain set
+of callbacks, and requiring it would drag Phoenix into every project that only
+wants a Dropbox client.
+
 ## Covered endpoints
 
 Magpie covers **all current user-scoped routes** of the Dropbox API v2 (132 routes as of August 2026), verified against the official [dropbox-api-spec](https://github.com/dropbox/dropbox-api-spec):
@@ -136,7 +177,8 @@ mix coveralls       # run with coverage report (currently ~94% line coverage)
 ## Roadmap
 
 Magpie already covers every user-scoped route of the Dropbox API v2. The focus
-now is on the higher-level ergonomics that real applications need:
+now is on the client-side ergonomics that real applications need — including a
+few things the official SDKs never shipped.
 
 ### 0.2.0 — OAuth 2 & token refresh ✅
 
@@ -148,11 +190,41 @@ now is on the higher-level ergonomics that real applications need:
 - [x] OAuth guide (Dropbox deprecated long-lived tokens — this makes Magpie
       production-ready for 24/7 applications)
 
-### 0.3.0 — Change watching
+### 0.2.1 — TokenServer ergonomics ✅
 
+- [x] `TokenServer` can start without a refresh token and receive one at runtime
+      (`set_refresh_token/3`) — plain static supervision trees, no DynamicSupervisor
+      dance for apps that obtain tokens via OAuth callback
+- [x] `authorize_url/2` `extra_params:` passthrough (`force_reapprove`, `locale`, …)
+
+### 0.3.0 — Typed metadata
+
+- [ ] Decode API responses into structs (`Magpie.FileMetadata`,
+      `Magpie.FolderMetadata`, `Magpie.DeletedMetadata`) with proper types —
+      `DateTime` timestamps, first-class `content_hash` — instead of raw maps
+      with `".tag"` keys
+
+### 0.4.0 — Reacting to changes
+
+- [ ] `Magpie.Webhook` — what the official SDKs never shipped: verification
+      challenge handling, constant-time `X-Dropbox-Signature` HMAC validation,
+      notification payload parsing, and a drop-in `Magpie.Webhook.Plug` for
+      Phoenix (raw-body aware)
 - [ ] `Magpie.Watcher` — supervised process wrapping `list_folder/longpoll`
       (cursor management, backoff, reconnection) that delivers folder change
       events as messages — "when a file lands in `/Inbox`, trigger a pipeline"
+- [ ] Webhook → Watcher integration: use webhook notifications as the wake-up
+      signal and `list_folder/continue` to fetch what actually changed
+
+### 0.5.0 — Phoenix uploads
+
+- [x] `Magpie.LiveView.UploadWriter` — stream a LiveView upload straight into a
+      Dropbox upload session, without spooling it to the server's disk
+- [ ] Direct browser → Dropbox uploads: a `Phoenix.LiveView` external uploader
+      backed by `get_temporary_upload_link/3`, so the bytes bypass your server
+      entirely (`content.dropboxapi.com` does send `Access-Control-Allow-Origin: *`
+      on those links, so this works from the browser). Ships the JS uploader
+      entry alongside the presign helper
 
 ### Backlog
 
@@ -162,10 +234,15 @@ now is on the higher-level ergonomics that real applications need:
       uploads of unchanged files (`verify: true` / `skip_unchanged: true`)
 - [ ] Rate-limit aware retries — honor `Retry-After` on 429/503 out of the box
 - [ ] `:telemetry` events for every request
+- [ ] `Dropbox-API-Path-Root` support — access team space namespaces, not just
+      the member folder
 - [ ] `upload_many/3` — concurrent multi-file upload via upload session batches
 
-Suggestions and PRs are welcome — open an [issue](https://github.com/alexcassol/magpie/issues).
+Magpie is a client library — application-level workflows (retention policies,
+deduplication, sync) are intentionally out of scope, though the guides include
+recipes for building them on top. 
 
+Suggestions and PRs are welcome — open an [issue](https://github.com/alexcassol/magpie/issues).
 
 ## Origin
 

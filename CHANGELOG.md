@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `Magpie.LiveView.UploadWriter` — a `Phoenix.LiveView.UploadWriter` that
+  streams a LiveView upload straight into a Dropbox upload session, so the
+  bytes never land on the server's disk. Chunks are buffered to
+  `:chunk_size` (default 8 MiB, Dropbox wants multiples of 4 MiB) and the
+  tail rides along with the finish call. Magpie does not depend on
+  `:phoenix_live_view` — the behaviour is a plain set of callbacks
+
 ## [0.2.1] - 2026-08-05
 
 ### Added

@@ -68,6 +68,7 @@ defmodule Magpie.MixProject do
           Magpie.Auth.StaticToken
         ],
         "High-level flows": [Magpie.Async, Magpie.Pager],
+        Phoenix: [Magpie.LiveView.UploadWriter],
         Files: ~r/Magpie\.Files.*/,
         Sharing: [Magpie.Sharing],
         "Users & Account": [
