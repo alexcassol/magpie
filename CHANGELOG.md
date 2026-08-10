@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `:chunk_size` (default 8 MiB, Dropbox wants multiples of 4 MiB) and the
   tail rides along with the finish call. Magpie does not depend on
   `:phoenix_live_view` — the behaviour is a plain set of callbacks
+- `Magpie.LiveView.presign_upload/4` — a LiveView `:external` uploader that
+  mints a one-time link with `Magpie.Files.get_temporary_upload_link/3` so the
+  browser posts the file straight to Dropbox, bypassing the server. Entries
+  above Dropbox's 150 MB single-request limit are rejected at presign time
+  instead of being handed a link that cannot work. The client-side half ships
+  as `priv/static/magpie_uploader.js`
 
 ## [0.2.1] - 2026-08-05
 

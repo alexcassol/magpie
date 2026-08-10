@@ -148,9 +148,33 @@ consume_uploaded_entries(socket, :report, fn %{metadata: metadata}, _entry ->
 end)
 ```
 
-Magpie does not depend on `:phoenix_live_view` — the behaviour is a plain set
-of callbacks, and requiring it would drag Phoenix into every project that only
-wants a Dropbox client.
+To take your server out of the path completely, `Magpie.LiveView.presign_upload/4`
+mints a one-time upload link and the browser posts the bytes straight to
+Dropbox (`content.dropboxapi.com` allows the cross-origin request):
+
+```elixir
+allow_upload(socket, :avatar, accept: ~w(.jpg .png), external: &presign/2)
+
+defp presign(entry, socket) do
+  Magpie.LiveView.presign_upload(client, entry, socket, path: "/Avatars/" <> entry.client_name)
+end
+```
+
+```javascript
+// assets/js/app.js
+import Uploaders from "../../deps/magpie/priv/static/magpie_uploader"
+
+let liveSocket = new LiveSocket("/live", Socket, {uploaders: Uploaders, params: {...}})
+```
+
+The destination path is baked into the link, so the browser cannot redirect
+the upload elsewhere. Dropbox caps these links at 150 MB — larger entries are
+rejected at presign time, and belong on the `UploadWriter` path.
+
+Magpie does not depend on `:phoenix_live_view` — the writer's callbacks are a
+plain behaviour and the presign function only reads `client_name`/`client_size`
+off the entry. Requiring the dependency would drag Phoenix into every project
+that only wants a Dropbox client.
 
 ## Covered endpoints
 
@@ -220,11 +244,9 @@ few things the official SDKs never shipped.
 
 - [x] `Magpie.LiveView.UploadWriter` — stream a LiveView upload straight into a
       Dropbox upload session, without spooling it to the server's disk
-- [ ] Direct browser → Dropbox uploads: a `Phoenix.LiveView` external uploader
-      backed by `get_temporary_upload_link/3`, so the bytes bypass your server
-      entirely (`content.dropboxapi.com` does send `Access-Control-Allow-Origin: *`
-      on those links, so this works from the browser). Ships the JS uploader
-      entry alongside the presign helper
+- [x] `Magpie.LiveView.presign_upload/4` — direct browser → Dropbox uploads via
+      `get_temporary_upload_link/3`, so the bytes bypass your server entirely,
+      with the JS uploader entry shipped in `priv/static`
 
 ### Backlog
 

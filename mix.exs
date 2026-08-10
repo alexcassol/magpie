@@ -68,7 +68,7 @@ defmodule Magpie.MixProject do
           Magpie.Auth.StaticToken
         ],
         "High-level flows": [Magpie.Async, Magpie.Pager],
-        Phoenix: [Magpie.LiveView.UploadWriter],
+        Phoenix: [Magpie.LiveView, Magpie.LiveView.UploadWriter],
         Files: ~r/Magpie\.Files.*/,
         Sharing: [Magpie.Sharing],
         "Users & Account": [
@@ -99,7 +99,7 @@ defmodule Magpie.MixProject do
       links: %{"GitHub" => @source_url},
       # Hex's default file list leaves `guides/` out, so the package shipped
       # without the very files the README links to.
-      files: ~w(lib guides mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
+      files: ~w(lib priv guides mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
     ]
   end
 end
