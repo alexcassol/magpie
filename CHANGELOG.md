@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-08-14
+
+Tracks the June–July 2026 Dropbox API spec updates that touch routes
+Magpie already wraps.
+
+### Added
+
+- `Magpie.Files.ListFolder.list_folder/3` and `stream/3` now take an
+  optional `opts` map merged into the request body, so callers can use
+  the remaining `/files/list_folder` arguments — including the new
+  `include_restorable_info` flag (each returned deleted entry then says
+  whether it can be restored via `is_restorable`)
+- `Magpie.Files.ListFolder.list_revisions/4` gained the same optional
+  `opts` map (`"mode"`, `"before_rev"`, `"include_restorable_info"`)
+
+### Changed
+
+- `Magpie.Files.get_thumbnail_v2/3` docs no longer list `"quality"` as an
+  option — Dropbox pulled the field from the public API surface in the
+  July 2026 spec update
+
 ## [0.3.0] - 2026-08-10
 
 Phoenix uploads. LiveView already owns the upload experience, so Magpie
@@ -134,6 +155,7 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
+[0.3.1]: https://github.com/alexcassol/magpie/releases/tag/v0.3.1
 [0.3.0]: https://github.com/alexcassol/magpie/releases/tag/v0.3.0
 [0.2.1]: https://github.com/alexcassol/magpie/releases/tag/v0.2.1
 [0.2.0]: https://github.com/alexcassol/magpie/releases/tag/v0.2.0
