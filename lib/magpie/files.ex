@@ -446,8 +446,8 @@ defmodule Magpie.Files do
   @doc """
   Get a thumbnail for an image or document, addressed by path or shared link.
   `resource` is `%{".tag" => "path", "path" => ...}` or
-  `%{".tag" => "link", "url" => ...}`; `opts` accepts `"format"`, `"size"`,
-  `"mode"` and `"quality"`.
+  `%{".tag" => "link", "url" => ...}`; `opts` accepts `"format"`, `"size"`
+  and `"mode"`.
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-get_thumbnail_v2
   """

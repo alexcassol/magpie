@@ -6,7 +6,9 @@ defmodule Magpie.Files.ListFolder do
   import Magpie
 
   @doc """
-  Starts returning the contents of a folder.
+  Starts returning the contents of a folder. `opts` accepts the other
+  `/files/list_folder` argument fields, e.g. `"recursive"`, `"limit"`,
+  `"include_deleted"` and `"include_restorable_info"`.
 
   ##Example
 
@@ -14,9 +16,9 @@ defmodule Magpie.Files.ListFolder do
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-list_folder
   """
-  @spec list_folder(Client.t(), binary) :: Magpie.response()
-  def list_folder(client, path) do
-    body = %{"path" => path}
+  @spec list_folder(Client.t(), binary, map) :: Magpie.response()
+  def list_folder(client, path, opts \\ %{}) do
+    body = Map.merge(%{"path" => path}, opts)
     post(client, "/files/list_folder", body)
   end
 
@@ -33,9 +35,9 @@ defmodule Magpie.Files.ListFolder do
       |> Enum.map(& &1["name"])
 
   """
-  def stream(client, path) do
+  def stream(client, path, opts \\ %{}) do
     Magpie.Pager.stream(
-      fn -> list_folder(client, path) end,
+      fn -> list_folder(client, path, opts) end,
       fn cursor -> list_folder_continue(client, cursor) end
     )
   end
@@ -58,7 +60,8 @@ defmodule Magpie.Files.ListFolder do
   end
 
   @doc """
-  Return revisions of a file.
+  Return revisions of a file. `opts` accepts the other `/files/list_revisions`
+  argument fields, e.g. `"mode"`, `"before_rev"` and `"include_restorable_info"`.
 
   ##Example
 
@@ -66,9 +69,9 @@ defmodule Magpie.Files.ListFolder do
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-list_revisions
   """
-  @spec list_revisions(Client.t(), binary, number) :: Magpie.response()
-  def list_revisions(client, path, limit \\ 10) do
-    body = %{"path" => path, "limit" => limit}
+  @spec list_revisions(Client.t(), binary, number, map) :: Magpie.response()
+  def list_revisions(client, path, limit \\ 10, opts \\ %{}) do
+    body = Map.merge(%{"path" => path, "limit" => limit}, opts)
     post(client, "/files/list_revisions", body)
   end
 

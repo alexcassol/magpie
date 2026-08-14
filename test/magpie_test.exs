@@ -119,6 +119,40 @@ defmodule MagpieTest do
       assert {:ok, %{"entries" => [%{"name" => "Backup"}]}} =
                Magpie.Files.ListFolder.list_folder(@client, "")
     end
+
+    test "list_folder/3 merges opts such as include_restorable_info into the body" do
+      Req.Test.stub(Magpie, fn conn ->
+        assert conn.request_path == "/2/files/list_folder"
+
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        assert %{"path" => "", "include_restorable_info" => true} = Jason.decode!(raw)
+
+        Req.Test.json(conn, %{"entries" => []})
+      end)
+
+      assert {:ok, %{"entries" => []}} =
+               Magpie.Files.ListFolder.list_folder(@client, "", %{
+                 "include_restorable_info" => true
+               })
+    end
+
+    test "list_revisions/4 merges opts such as include_restorable_info into the body" do
+      Req.Test.stub(Magpie, fn conn ->
+        assert conn.request_path == "/2/files/list_revisions"
+
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+
+        assert %{"path" => "/a.txt", "limit" => 10, "include_restorable_info" => true} =
+                 Jason.decode!(raw)
+
+        Req.Test.json(conn, %{"entries" => [], "is_deleted" => false})
+      end)
+
+      assert {:ok, %{"entries" => []}} =
+               Magpie.Files.ListFolder.list_revisions(@client, "/a.txt", 10, %{
+                 "include_restorable_info" => true
+               })
+    end
   end
 
   describe "Sharing" do
