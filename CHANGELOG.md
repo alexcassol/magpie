@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.2] - 2026-08-18
 
 ### Added
 
@@ -164,7 +164,7 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
-[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.3.1...HEAD
+[0.3.2]: https://github.com/alexcassol/magpie/releases/tag/v0.3.2
 [0.3.1]: https://github.com/alexcassol/magpie/releases/tag/v0.3.1
 [0.3.0]: https://github.com/alexcassol/magpie/releases/tag/v0.3.0
 [0.2.1]: https://github.com/alexcassol/magpie/releases/tag/v0.2.1
