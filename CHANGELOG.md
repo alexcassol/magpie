@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Phoenix & LiveView uploads guide on HexDocs — controllers,
+  `Magpie.LiveView.UploadWriter`, direct browser → Dropbox uploads with
+  `presign_upload/4`, and how to test both offline
+- `ROADMAP.md` — planned work moved out of the README
+
 ## [0.3.1] - 2026-08-14
 
 Tracks the June–July 2026 Dropbox API spec updates that touch routes
@@ -155,6 +164,7 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
+[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.3.1...HEAD
 [0.3.1]: https://github.com/alexcassol/magpie/releases/tag/v0.3.1
 [0.3.0]: https://github.com/alexcassol/magpie/releases/tag/v0.3.0
 [0.2.1]: https://github.com/alexcassol/magpie/releases/tag/v0.2.1

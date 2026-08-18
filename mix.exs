@@ -50,8 +50,9 @@ defmodule Magpie.MixProject do
       source_ref: "v#{@version}",
       extras: [
         "README.md",
-        "guides/oauth.md",
         "guides/examples.md",
+        "guides/oauth.md",
+        "guides/phoenix.md",
         "CHANGELOG.md",
         "LICENSE"
       ],

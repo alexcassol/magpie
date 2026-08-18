@@ -94,6 +94,10 @@ through an upload session in chunks — without loading the file into memory:
   )
 ```
 
+Uploads coming from a Phoenix controller or a LiveView form — including
+streaming straight into Dropbox without touching your disk — are covered in
+the [Phoenix guide](phoenix.html).
+
 If you need manual control over the session (e.g. the data is generated on
 the fly), use the lower-level primitives:
 
