@@ -1,7 +1,7 @@
 defmodule Magpie.MixProject do
   use Mix.Project
 
-  @version "0.3.2"
+  @version "0.4.0"
   @source_url "https://github.com/alexcassol/magpie"
 
   def project do
@@ -36,7 +36,8 @@ defmodule Magpie.MixProject do
 
   defp deps do
     [
-      {:req, "~> 0.7"},
+      {:req, "~> 0.7.4"},
+      {:jason, "~> 1.4"},
       {:plug, "~> 1.15", only: :test},
       {:excoveralls, "~> 0.18", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
@@ -53,6 +54,7 @@ defmodule Magpie.MixProject do
         "guides/examples.md",
         "guides/oauth.md",
         "guides/phoenix.md",
+        "guides/upgrading.md",
         "CHANGELOG.md",
         "LICENSE"
       ],
@@ -70,6 +72,12 @@ defmodule Magpie.MixProject do
         ],
         "High-level flows": [Magpie.Async, Magpie.Pager],
         Phoenix: [Magpie.LiveView, Magpie.LiveView.UploadWriter],
+        Metadata: [
+          Magpie.Metadata,
+          Magpie.FileMetadata,
+          Magpie.FolderMetadata,
+          Magpie.DeletedMetadata
+        ],
         Files: ~r/Magpie\.Files.*/,
         Sharing: [Magpie.Sharing],
         "Users & Account": [

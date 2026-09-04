@@ -69,7 +69,8 @@ defmodule MagpieAuthPipelineTest do
         Req.Test.json(conn, %{"metadata" => %{"name" => "Photos"}})
       end)
 
-      assert {:ok, %{"metadata" => _}} = Magpie.Files.create_folder(client, "/Photos")
+      assert {:ok, %Magpie.FolderMetadata{name: "Photos"}} =
+               Magpie.Files.create_folder(client, "/Photos")
     end
 
     test "a client built by hand still authenticates with its access token" do
@@ -129,7 +130,7 @@ defmodule MagpieAuthPipelineTest do
         Req.Test.json(conn, %{"metadata" => %{"name" => "Photos"}})
       end)
 
-      assert {:ok, %{"metadata" => %{"name" => "Photos"}}} =
+      assert {:ok, %Magpie.FolderMetadata{name: "Photos"}} =
                Magpie.Files.create_folder(client, "/Photos")
 
       Req.Test.verify!()

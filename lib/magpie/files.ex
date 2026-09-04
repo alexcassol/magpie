@@ -1,46 +1,55 @@
 defmodule Magpie.Files do
   @moduledoc """
-  This module contains endpoints and data types
-  for basic file operations.
+  Basic file operations (`/files/*`).
+
+  Functions that return the metadata of a file or folder hand back
+  `Magpie.FileMetadata`, `Magpie.FolderMetadata` or `Magpie.DeletedMetadata`
+  structs — see `Magpie.Metadata` — instead of raw JSON maps. Endpoints that
+  wrap the metadata in a result object (`create_folder/2`, `delete_folder/2`,
+  `copy/3`, `move/3`) are unwrapped, so the struct is the whole result.
   """
   import Magpie
   import Magpie.Utils
   alias Magpie.Client
   alias Magpie.Files.UploadSession
+  alias Magpie.Metadata
 
   # Dropbox rejects single-request uploads above 150 MiB
   @session_threshold 150 * 1024 * 1024
   @default_chunk_size 8 * 1024 * 1024
 
   @doc """
-  Create folder returns map
+  Create a folder at a given path. Returns the new folder's
+  `Magpie.FolderMetadata`.
 
   ## Example
 
-    Magpie.Files.create_folder client, "/Path"
+      {:ok, %Magpie.FolderMetadata{id: "id:" <> _}} = Magpie.Files.create_folder(client, "/Path")
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-create_folder
   """
-  @spec create_folder(Client.t(), binary) :: any
+  @spec create_folder(Client.t(), binary) ::
+          {:ok, Magpie.FolderMetadata.t()} | {:error, Magpie.Error.t()}
   def create_folder(client, path) do
     body = %{"path" => path}
-    post(client, "/files/create_folder_v2", body)
+
+    client
+    |> post("/files/create_folder_v2", body)
+    |> Metadata.map_ok(&Metadata.unwrap(&1, :folder))
   end
 
   @doc """
   Same as `create_folder/2` but returns `{:ok, %Magpie.Folder{}}`.
 
-  ## Example
-
-    Magpie.Files.create_folder_to_struct client, "/Path"
-
-  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-create_folder
+  Deprecated: `create_folder/2` itself returns a typed
+  `Magpie.FolderMetadata` since 0.4.0.
   """
+  @deprecated "create_folder/2 now returns a Magpie.FolderMetadata struct"
   @spec create_folder_to_struct(Client.t(), binary) ::
           {:ok, Magpie.Folder.t()} | {:error, Magpie.Error.t()}
   def create_folder_to_struct(client, path) do
     case create_folder(client, path) do
-      {:ok, response} -> {:ok, to_struct(%Magpie.Folder{}, response)}
+      {:ok, metadata} -> {:ok, legacy_folder(metadata)}
       {:error, error} -> {:error, error}
     end
   end
@@ -52,77 +61,115 @@ defmodule Magpie.Files do
   The returned metadata will be the corresponding FileMetadata
   or FolderMetadata for the item at time of deletion, and not a DeletedMetadata object.
 
+  Returns the `Magpie.FileMetadata` or `Magpie.FolderMetadata` of the
+  deleted item.
+
   ## Example
 
-     Magpie.Files.delete_folder client, "/Homework/math/Prime_Numbers.txt"
+      {:ok, %Magpie.FileMetadata{}} =
+        Magpie.Files.delete_folder(client, "/Homework/math/Prime_Numbers.txt")
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-delete_v2
   """
+  @spec delete_folder(Client.t(), binary) ::
+          {:ok, Magpie.FileMetadata.t() | Magpie.FolderMetadata.t()}
+          | {:error, Magpie.Error.t()}
   def delete_folder(client, path) do
     body = %{"path" => path}
-    post(client, "/files/delete_v2", body)
+
+    client
+    |> post("/files/delete_v2", body)
+    |> Metadata.map_ok(&Metadata.unwrap/1)
   end
 
   @doc """
   Same as `delete_folder/2` but returns `{:ok, %Magpie.Folder{}}`.
 
-  ## Example
-
-    Magpie.Files.delete_folder_to_struct client, "/Path"
-
-  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-delete_v2
+  Deprecated: `delete_folder/2` itself returns typed metadata since 0.4.0.
   """
+  @deprecated "delete_folder/2 now returns a Magpie.FileMetadata or Magpie.FolderMetadata struct"
   @spec delete_folder_to_struct(Client.t(), binary) ::
           {:ok, Magpie.Folder.t()} | {:error, Magpie.Error.t()}
   def delete_folder_to_struct(client, path) do
     case delete_folder(client, path) do
-      {:ok, response} -> {:ok, to_struct(%Magpie.Folder{}, response)}
+      {:ok, metadata} -> {:ok, legacy_folder(metadata)}
       {:error, error} -> {:error, error}
     end
   end
+
+  # The legacy `Magpie.Folder` carries a subset of the typed metadata fields.
+  defp legacy_folder(%{name: name, id: id, path_display: path_display, path_lower: path_lower}),
+    do: %Magpie.Folder{id: id, name: name, path_display: path_display, path_lower: path_lower}
+
+  defp legacy_folder(other) when is_map(other), do: to_struct(%Magpie.Folder{}, other)
 
   @doc """
   Copy a file or folder to a different location in the user's Dropbox.
   If the source path is a folder all its contents will be copied.
 
+  Returns the metadata of the copy.
+
   ## Example
 
-    Magpie.Files.copy(client, "/Temp/first", "/Tmp/second")
+      {:ok, %Magpie.FileMetadata{path_display: "/Tmp/second"}} =
+        Magpie.Files.copy(client, "/Temp/first", "/Tmp/second")
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-copy_v2
   """
+  @spec copy(Client.t(), binary, binary) ::
+          {:ok, Magpie.FileMetadata.t() | Magpie.FolderMetadata.t()}
+          | {:error, Magpie.Error.t()}
   def copy(client, from_path, to_path) do
     body = %{"from_path" => from_path, "to_path" => to_path}
-    post(client, "/files/copy_v2", body)
+
+    client
+    |> post("/files/copy_v2", body)
+    |> Metadata.map_ok(&Metadata.unwrap/1)
   end
 
   @doc """
   Move a file or folder to a different location in the user's Dropbox.
   If the source path is a folder all its contents will be moved.
 
+  Returns the metadata at the new location.
+
   ## Example
 
-    Magpie.Files.move(client, "/Homework/math", "/Homework/algebra")
+      {:ok, %Magpie.FolderMetadata{name: "algebra"}} =
+        Magpie.Files.move(client, "/Homework/math", "/Homework/algebra")
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-move_v2
   """
+  @spec move(Client.t(), binary, binary) ::
+          {:ok, Magpie.FileMetadata.t() | Magpie.FolderMetadata.t()}
+          | {:error, Magpie.Error.t()}
   def move(client, from_path, to_path) do
     body = %{"from_path" => from_path, "to_path" => to_path}
-    post(client, "/files/move_v2", body)
+
+    client
+    |> post("/files/move_v2", body)
+    |> Metadata.map_ok(&Metadata.unwrap/1)
   end
 
   @doc """
-  Restore a file to a specific revision.
+  Restore a file to a specific revision. Returns the restored file's
+  `Magpie.FileMetadata`.
 
   ## Example
 
-    Magpie.Files.restore(client, "/root/word.docx", "a1c10ce0dd78")
+      {:ok, %Magpie.FileMetadata{rev: rev}} =
+        Magpie.Files.restore(client, "/root/word.docx", "a1c10ce0dd78")
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-restore
   """
+  @spec restore(Client.t(), binary, binary) ::
+          {:ok, Magpie.FileMetadata.t()} | {:error, Magpie.Error.t()}
   def restore(client, path, rev) do
     body = %{"path" => path, "rev" => rev}
-    post(client, "/files/restore", body)
+
+    client
+    |> post("/files/restore", body)
+    |> Metadata.map_ok(&Metadata.decode(&1, :file))
   end
 
   @doc """
@@ -131,15 +178,23 @@ defmodule Magpie.Files do
   `options` accepts the `SearchOptions` fields, e.g.
   `%{"path" => "/Photos", "max_results" => 100, "filename_only" => true}`.
 
+  Each match's `"metadata"` is decoded into a `Magpie.FileMetadata` /
+  `Magpie.FolderMetadata` struct (see `Magpie.Metadata.decode_matches/1`);
+  the rest of the match (`"match_type"`, `"highlights"`) is kept as is.
+
   ## Example
 
-    Magpie.Files.search(client, "word.docx", %{"path" => "/root"})
+      {:ok, %{"matches" => [%{"metadata" => %Magpie.FileMetadata{}} | _]}} =
+        Magpie.Files.search(client, "word.docx", %{"path" => "/root"})
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-search_v2
   """
   def search(client, query, options \\ %{}) do
     body = %{"query" => query, "options" => options}
-    post(client, "/files/search_v2", body)
+
+    client
+    |> post("/files/search_v2", body)
+    |> Metadata.map_ok(&Metadata.decode_matches/1)
   end
 
   @doc """
@@ -153,7 +208,10 @@ defmodule Magpie.Files do
   """
   def search_continue(client, cursor) do
     body = %{"cursor" => cursor}
-    post(client, "/files/search/continue_v2", body)
+
+    client
+    |> post("/files/search/continue_v2", body)
+    |> Metadata.map_ok(&Metadata.decode_matches/1)
   end
 
   @doc """
@@ -166,6 +224,7 @@ defmodule Magpie.Files do
       client
       |> Magpie.Files.search_stream("report", %{"path" => "/Work"})
       |> Enum.take(50)
+      |> Enum.map(fn %{"metadata" => %Magpie.FileMetadata{} = file} -> file.path_display end)
 
   """
   def search_stream(client, query, options \\ %{}) do
@@ -177,11 +236,13 @@ defmodule Magpie.Files do
   end
 
   @doc """
-  Create a new file with the contents provided in the request.
+  Create a new file with the contents of the local file at `file`. Returns
+  the `Magpie.FileMetadata` of the uploaded file.
 
   ## Example
 
-    Magpie.Files.upload client, "/mypdf.pdf", "/mypdf.pdf"
+      {:ok, %Magpie.FileMetadata{content_hash: hash}} =
+        Magpie.Files.upload(client, "/mypdf.pdf", "/mypdf.pdf")
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-upload
   """
@@ -198,13 +259,9 @@ defmodule Magpie.Files do
       "Content-Type" => "application/octet-stream"
     }
 
-    upload_request(
-      client,
-      upload_url(),
-      "files/upload",
-      file,
-      headers
-    )
+    client
+    |> upload_request(upload_url(), "files/upload", file, headers)
+    |> Metadata.map_ok(&Metadata.decode(&1, :file))
   end
 
   @doc """
@@ -217,8 +274,8 @@ defmodule Magpie.Files do
       (`start` → `append_v2` × N → `finish`) in chunks of `:chunk_size`
       bytes, without ever loading the whole file into memory.
 
-  Returns `{:ok, file_metadata}` on success, `{:error, %Magpie.Error{}}` on
-  Dropbox errors, or `{:error, posix}` when the local file cannot be read.
+  Returns `{:ok, %Magpie.FileMetadata{}}` on success, `{:error, %Magpie.Error{}}`
+  on Dropbox errors, or `{:error, posix}` when the local file cannot be read.
 
   ## Options
 
@@ -231,7 +288,8 @@ defmodule Magpie.Files do
 
   ## Example
 
-      {:ok, metadata} = Magpie.Files.upload_file(client, "/Backup/db.dump", "priv/db.dump")
+      {:ok, %Magpie.FileMetadata{size: size, content_hash: hash}} =
+        Magpie.Files.upload_file(client, "/Backup/db.dump", "priv/db.dump")
 
   """
   def upload_file(client, path, local_path, opts \\ []) do
@@ -458,14 +516,18 @@ defmodule Magpie.Files do
   end
 
   @doc """
-  Returns the metadata for a file or folder.
+  Returns the metadata for a file or folder as a `Magpie.FileMetadata`,
+  `Magpie.FolderMetadata` or — with `include_deleted` — `Magpie.DeletedMetadata`.
 
   ## Example
 
-    Magpie.Files.get_metadata client, "/mypdf.pdf"
+      {:ok, %Magpie.FileMetadata{size: size, server_modified: %DateTime{}}} =
+        Magpie.Files.get_metadata(client, "/mypdf.pdf")
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-get_metadata
   """
+  @spec get_metadata(Client.t(), binary, boolean, boolean, boolean) ::
+          {:ok, Magpie.Metadata.t()} | {:error, Magpie.Error.t()}
   def get_metadata(
         client,
         path,
@@ -480,6 +542,8 @@ defmodule Magpie.Files do
       "include_has_explicit_shared_members" => include_has_explicit_shared_members
     }
 
-    post(client, "/files/get_metadata", body)
+    client
+    |> post("/files/get_metadata", body)
+    |> Metadata.map_ok(&Metadata.decode/1)
   end
 end

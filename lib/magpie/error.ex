@@ -15,7 +15,7 @@ defmodule Magpie.Error do
   mid-enumeration:
 
       case Magpie.Files.create_folder(client, "/Existing") do
-        {:ok, %{"metadata" => metadata}} -> metadata
+        {:ok, %Magpie.FolderMetadata{} = folder} -> folder
         {:error, %Magpie.Error{status: 409, summary: "path/conflict" <> _}} -> :already_exists
         {:error, error} -> raise error
       end

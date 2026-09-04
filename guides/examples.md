@@ -84,7 +84,15 @@ through an upload session in chunks — without loading the file into memory:
 
 ```elixir
 # Works the same for a 2 KB text file or a 40 GB backup
-{:ok, metadata} = Magpie.Files.upload_file(client, "/Backup/db.dump", "priv/db.dump")
+{:ok, %Magpie.FileMetadata{} = file} =
+  Magpie.Files.upload_file(client, "/Backup/db.dump", "priv/db.dump")
+
+file.size
+# => 1_073_741_824
+
+# Dropbox hashes what it stored — compare it with the local file
+file.content_hash == Magpie.Metadata.content_hash(File.stream!("priv/db.dump", 4 * 1024 * 1024))
+# => true
 
 # Overwrite an existing file, with a custom chunk size
 {:ok, _} =
@@ -105,7 +113,7 @@ the fly), use the lower-level primitives:
 {:ok, %{"session_id" => sid}} = Magpie.Files.UploadSession.start_data(client, chunk1)
 {:ok, _} = Magpie.Files.UploadSession.append_data(client, sid, byte_size(chunk1), chunk2)
 
-{:ok, metadata} =
+{:ok, %Magpie.FileMetadata{}} =
   Magpie.Files.UploadSession.finish_data(
     client,
     sid,
@@ -121,6 +129,10 @@ the fly), use the lower-level primitives:
 {:ok, %{body: contents}} = Magpie.Files.download(client, "/Backup/db.dump")
 File.write!("db.dump", contents)
 
+# Verify it arrived intact
+{:ok, %Magpie.FileMetadata{content_hash: hash}} = Magpie.Files.get_metadata(client, "/Backup/db.dump")
+^hash = Magpie.Metadata.content_hash(contents)
+
 # A whole folder as a zip
 {:ok, %{body: zip}} = Magpie.Files.download_zip(client, "/Backup")
 File.write!("backup.zip", zip)
@@ -129,28 +141,81 @@ File.write!("backup.zip", zip)
 {:ok, %{"link" => url}} = Magpie.Files.get_temporary_link(client, "/Backup/db.dump")
 ```
 
+## Working with metadata
+
+The `files` endpoints describe every entry with one of three structs —
+`Magpie.FileMetadata`, `Magpie.FolderMetadata` or `Magpie.DeletedMetadata`
+— so the kind of entry is the struct you match on, timestamps are
+`DateTime`s and the `content_hash` is a field (see `Magpie.Metadata`):
+
+```elixir
+{:ok, %Magpie.FileMetadata{} = file} = Magpie.Files.get_metadata(client, "/Backup/db.dump")
+
+file.size
+# => 1_073_741_824
+file.server_modified
+# => ~U[2026-09-01 03:00:12Z]
+DateTime.diff(DateTime.utc_now(), file.server_modified, :hour)
+# => 41
+
+# Folders and files come from the same call
+case Magpie.Files.get_metadata(client, path) do
+  {:ok, %Magpie.FileMetadata{size: size}} -> {:file, size}
+  {:ok, %Magpie.FolderMetadata{}} -> :folder
+  {:error, %Magpie.Error{status: 409}} -> :not_found
+end
+```
+
+Endpoints that answer with a result object (`create_folder/2`,
+`delete_folder/2`, `copy/3`, `move/3`) are unwrapped, so the struct is the
+whole result:
+
+```elixir
+{:ok, %Magpie.FolderMetadata{id: "id:" <> _}} = Magpie.Files.create_folder(client, "/Photos/2026")
+{:ok, %Magpie.FileMetadata{path_display: "/Archive/a.txt"}} = Magpie.Files.move(client, "/a.txt", "/Archive/a.txt")
+```
+
 ## Listing folders lazily
 
 `Magpie.Files.ListFolder.stream/2` hides cursor pagination behind a regular
-`Stream` — pages are only fetched as you consume it:
+`Stream` — pages are only fetched as you consume it, and every entry is a
+metadata struct:
 
 ```elixir
 # All PDF names in a folder, no matter how many pages Dropbox returns
 client
 |> Magpie.Files.ListFolder.stream("/Documents")
-|> Stream.filter(&String.ends_with?(&1["name"], ".pdf"))
-|> Enum.map(& &1["name"])
+|> Stream.filter(&match?(%Magpie.FileMetadata{}, &1))
+|> Stream.filter(&String.ends_with?(&1.name, ".pdf"))
+|> Enum.map(& &1.name)
 
 # Lazy: only fetches as many pages as needed for the first 10 entries
 client |> Magpie.Files.ListFolder.stream("/Photos") |> Enum.take(10)
+
+# Files changed in the last day, largest first
+client
+|> Magpie.Files.ListFolder.stream("/Shared", %{"recursive" => true})
+|> Stream.filter(&match?(%Magpie.FileMetadata{}, &1))
+|> Stream.filter(&(DateTime.diff(DateTime.utc_now(), &1.server_modified, :day) < 1))
+|> Enum.sort_by(& &1.size, :desc)
+
+# Deleted entries show up as Magpie.DeletedMetadata when asked for
+client
+|> Magpie.Files.ListFolder.stream("/Inbox", %{"include_deleted" => true})
+|> Enum.filter(&match?(%Magpie.DeletedMetadata{}, &1))
 ```
 
 The same pattern is available for searches, shared folders and file
 requests — and `Magpie.Pager.stream/3` lets you wrap any other paginated
-endpoint yourself:
+endpoint yourself. Search matches carry their metadata struct under
+`"metadata"`; the sharing and file-request streams are outside the `files`
+namespace and yield Dropbox's maps as they are:
 
 ```elixir
-client |> Magpie.Files.search_stream("invoice", %{"path" => "/Work"}) |> Enum.to_list()
+client
+|> Magpie.Files.search_stream("invoice", %{"path" => "/Work"})
+|> Enum.map(fn %{"metadata" => %Magpie.FileMetadata{} = file} -> file.path_display end)
+
 client |> Magpie.Sharing.list_folders_stream() |> Enum.map(& &1["name"])
 client |> Magpie.FileRequests.stream() |> Enum.count()
 ```
@@ -206,8 +271,8 @@ Successful calls return `{:ok, result}`. Dropbox errors come back as
 
 ```elixir
 case Magpie.Files.create_folder(client, "/Existing") do
-  {:ok, %{"metadata" => metadata}} ->
-    metadata
+  {:ok, %Magpie.FolderMetadata{} = folder} ->
+    folder
 
   {:error, %Magpie.Error{status: 409, summary: "path/conflict" <> _}} ->
     :already_exists
@@ -230,14 +295,20 @@ stubs, so your test suite never touches the network. In `config/test.exs`:
 config :magpie, req_options: [plug: {Req.Test, Magpie}]
 ```
 
-Then stub responses per test:
+Then stub responses per test. Stubs return JSON exactly as Dropbox would —
+including the `".tag"` on listed entries — and Magpie decodes it into the
+same structs your code sees in production:
 
 ```elixir
 test "lists the backup folder" do
   Req.Test.stub(Magpie, fn conn ->
-    Req.Test.json(conn, %{"entries" => [%{"name" => "db.dump"}]})
+    Req.Test.json(conn, %{
+      "entries" => [%{".tag" => "file", "name" => "db.dump", "rev" => "015", "size" => 42}],
+      "cursor" => "c",
+      "has_more" => false
+    })
   end)
 
-  assert {:ok, %{"entries" => [_]}} = MyApp.Backups.list()
+  assert {:ok, [%Magpie.FileMetadata{name: "db.dump", size: 42}]} = MyApp.Backups.list()
 end
 ```

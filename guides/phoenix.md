@@ -42,9 +42,9 @@ defmodule MyAppWeb.ReportController do
 
   def create(conn, %{"file" => %Plug.Upload{} = upload}) do
     case Magpie.Files.upload_file(MyApp.Dropbox.client(), "/Uploads/" <> upload.filename, upload.path) do
-      {:ok, metadata} ->
+      {:ok, %Magpie.FileMetadata{} = file} ->
         conn
-        |> put_flash(:info, "Uploaded #{metadata["name"]}")
+        |> put_flash(:info, "Uploaded #{file.name} (#{file.size} bytes)")
         |> redirect(to: ~p"/reports")
 
       {:error, %Magpie.Error{} = error} ->
@@ -65,8 +65,9 @@ The next section removes that round trip.
 
 `Magpie.LiveView.UploadWriter` is a `Phoenix.LiveView.UploadWriter` that
 appends to a Dropbox upload session as the chunks arrive. By the time
-`consume_uploaded_entries/3` runs, the file is already committed — the
-Dropbox metadata comes back in `meta/1`, and there is nothing left to upload.
+`consume_uploaded_entries/3` runs, the file is already committed — its
+`Magpie.FileMetadata` comes back in `meta/1`, and there is nothing left to
+upload.
 
 ```elixir
 defmodule MyAppWeb.ReportLive.Upload do
@@ -92,7 +93,7 @@ defmodule MyAppWeb.ReportLive.Upload do
   def handle_event("validate", _params, socket), do: {:noreply, socket}
 
   def handle_event("save", _params, socket) do
-    # `metadata` is the Dropbox FileMetadata of the committed file
+    # `metadata` is the `Magpie.FileMetadata` of the committed file
     uploaded =
       consume_uploaded_entries(socket, :report, fn %{metadata: metadata}, _entry ->
         {:ok, metadata}
@@ -114,7 +115,7 @@ defmodule MyAppWeb.ReportLive.Upload do
     </div>
 
     <ul>
-      <li :for={file <- @uploaded}>{file["path_display"]}</li>
+      <li :for={file <- @uploaded}>{file.path_display} ({file.size} bytes)</li>
     </ul>
     """
   end

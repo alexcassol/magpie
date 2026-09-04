@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-04
+
+Typed metadata. The `files` endpoints now describe files and folders with
+structs instead of raw JSON maps with `".tag"` keys. This changes the shape
+of several results — the [Upgrading to 0.4](guides/upgrading.md) guide lists
+every affected call with the 0.3 and 0.4 versions side by side.
+
+### Added
+
+- `Magpie.FileMetadata`, `Magpie.FolderMetadata` and `Magpie.DeletedMetadata`
+  — typed structs for the three kinds of entry Dropbox returns, with
+  `DateTime` timestamps (`client_modified`, `server_modified`), a first-class
+  `content_hash`, `is_downloadable` defaulting to `true`, and the nested
+  objects (`sharing_info`, `media_info`, `file_lock_info`, ...) kept as raw
+  maps
+- `Magpie.Metadata` — the decoder behind it: `decode/2` (by `".tag"`, or by
+  an explicit `:file`/`:folder` kind for the endpoints Dropbox answers
+  untagged), `unwrap/2` for `%{"metadata" => ...}` results, `decode_page/2`
+  for listings and `decode_matches/1` for search pages, so endpoints called
+  by hand through `Magpie.post/3` can be decoded the same way
+- `Magpie.Metadata.content_hash/1` — computes Dropbox's block-wise SHA-256
+  content hash of a binary or a stream of chunks, to verify uploads and
+  downloads against `Magpie.FileMetadata.content_hash`
+- Upgrading guide on HexDocs
+
+### Changed
+
+- **Breaking:** `Magpie.Files.get_metadata/5`, `upload/6`, `upload_file/4`,
+  `restore/3`, `Magpie.Files.UploadSession.finish/8` and `finish_data/5`
+  return metadata structs instead of maps; `Magpie.LiveView.UploadWriter`'s
+  `meta/1` carries the struct under `:metadata`
+- **Breaking:** `Magpie.Files.create_folder/2`, `delete_folder/2`, `copy/3`
+  and `move/3` return the struct directly — the `%{"metadata" => ...}`
+  envelope is gone
+- **Breaking:** `Magpie.Files.ListFolder.list_folder/3`,
+  `list_folder_continue/2`, `stream/3` and `list_revisions/4` decode every
+  entry; the page itself (`"cursor"`, `"has_more"`, `"is_deleted"`) keeps
+  its string keys
+- **Breaking:** `Magpie.Files.search/3`, `search_continue/2` and
+  `search_stream/3` decode each match's `"metadata"` into a struct,
+  flattening Dropbox's one-variant `%{".tag" => "metadata", "metadata" => ...}`
+  union
+- Req requirement bumped to `~> 0.7.4`, and `jason` — which Magpie always
+  used to build the `Dropbox-API-Arg` header — is now a declared dependency
+  instead of one inherited from Req
+
+### Deprecated
+
+- `Magpie.Files.create_folder_to_struct/2`, `delete_folder_to_struct/2` and
+  the `Magpie.Folder` struct they build — `create_folder/2` and
+  `delete_folder/2` return the richer typed metadata themselves now
+
 ## [0.3.2] - 2026-08-18
 
 ### Added
@@ -164,6 +216,7 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
+[0.4.0]: https://github.com/alexcassol/magpie/releases/tag/v0.4.0
 [0.3.2]: https://github.com/alexcassol/magpie/releases/tag/v0.3.2
 [0.3.1]: https://github.com/alexcassol/magpie/releases/tag/v0.3.1
 [0.3.0]: https://github.com/alexcassol/magpie/releases/tag/v0.3.0

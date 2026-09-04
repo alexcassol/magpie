@@ -15,7 +15,7 @@ Like the bird, Magpie collects and stashes your things — in your Dropbox.
 ```elixir
 def deps do
   [
-    {:magpie, "~> 0.3"}
+    {:magpie, "~> 0.4"}
   ]
 end
 ```
@@ -40,13 +40,21 @@ client = Magpie.Client.new("DROPBOX_ACCESS_TOKEN")
 
 {:ok, account} = Magpie.Users.current_account(client)
 {:ok, %{"entries" => entries}} = Magpie.Files.ListFolder.list_folder(client, "/Photos")
-{:ok, metadata} = Magpie.Files.upload_file(client, "/Backup/report.pdf", "priv/report.pdf")
+{:ok, %Magpie.FileMetadata{size: size}} = Magpie.Files.upload_file(client, "/Backup/report.pdf", "priv/report.pdf")
 {:ok, %{body: contents}} = Magpie.Files.download(client, "/Backup/report.pdf")
 ```
 
 Every call returns `{:ok, result}` on success or `{:error, %Magpie.Error{}}`
 on API errors — with the HTTP `status`, Dropbox's `error_summary` and the
-full error `body`.
+full error `body`. Files, folders and deleted entries come back as
+`Magpie.FileMetadata`, `Magpie.FolderMetadata` and `Magpie.DeletedMetadata`
+structs:
+
+```elixir
+for %Magpie.FileMetadata{name: name, size: size, server_modified: at} <- entries do
+  "#{name}: #{size} bytes, modified #{DateTime.to_date(at)}"
+end
+```
 
 ## Features
 
@@ -55,6 +63,10 @@ full error `body`.
   `account`, `auth`, `check`, `contacts`, `openid`), verified against the
   official [dropbox-api-spec](https://github.com/dropbox/dropbox-api-spec).
   Dropbox Business (`/team/*`) routes are out of scope.
+- **Typed metadata** — the `files` endpoints decode Dropbox's metadata into
+  structs with `DateTime` timestamps and a first-class `content_hash`, and
+  `Magpie.Metadata.content_hash/1` computes the same hash locally to verify
+  a transfer
 - **OAuth 2 & token refresh** — authorization URL, PKCE, code exchange, and a
   supervised `Magpie.Auth.TokenServer` that keeps access tokens fresh
   (proactively, and on `expired_access_token`) with single-flight refreshes.
@@ -83,11 +95,13 @@ the guides:
   persisting tokens and custom providers
 - [Phoenix & LiveView uploads](https://magpie.hexdocs.pm/phoenix.html) —
   controllers, `UploadWriter`, direct browser → Dropbox uploads
+- [Upgrading to 0.4](https://magpie.hexdocs.pm/upgrading.html) — every call
+  whose result changed with typed metadata, with 0.3 and 0.4 side by side
 
 ## Roadmap
 
-Planned work — typed metadata structs, webhooks, a folder watcher, streaming
-downloads and more — is tracked in
+Planned work — webhooks, a folder watcher, streaming downloads and more —
+is tracked in
 [ROADMAP.md](https://github.com/alexcassol/magpie/blob/main/ROADMAP.md).
 Suggestions and PRs are welcome — open an
 [issue](https://github.com/alexcassol/magpie/issues).

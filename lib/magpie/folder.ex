@@ -1,6 +1,12 @@
 defmodule Magpie.Folder do
   @moduledoc """
-  Struct for folder metadata returned by the files endpoints.
+  Legacy struct for folder metadata, kept for
+  `Magpie.Files.create_folder_to_struct/2` and
+  `Magpie.Files.delete_folder_to_struct/2`.
+
+  Deprecated since 0.4.0: the files endpoints now return
+  `Magpie.FolderMetadata` (and `Magpie.FileMetadata`) directly — see
+  `Magpie.Metadata`.
   """
   @type t :: %__MODULE__{}
 

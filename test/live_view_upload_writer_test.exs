@@ -57,7 +57,7 @@ defmodule Magpie.LiveView.UploadWriterTest do
 
     assert UploadWriter.meta(state) == %{
              path: "/report.pdf",
-             metadata: %{"name" => "report.pdf"}
+             metadata: %Magpie.FileMetadata{name: "report.pdf"}
            }
   end
 

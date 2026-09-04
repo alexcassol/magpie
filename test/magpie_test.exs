@@ -47,10 +47,11 @@ defmodule MagpieTest do
     test "create_folder/2 posts to /files/create_folder_v2" do
       Req.Test.stub(Magpie, fn conn ->
         assert conn.request_path == "/2/files/create_folder_v2"
-        Req.Test.json(conn, %{"metadata" => %{"name" => "Backup"}})
+        Req.Test.json(conn, %{"metadata" => %{"name" => "Backup", "id" => "id:1"}})
       end)
 
-      assert {:ok, %{"metadata" => _}} = Magpie.Files.create_folder(@client, "/Backup")
+      assert {:ok, %Magpie.FolderMetadata{name: "Backup", id: "id:1"}} =
+               Magpie.Files.create_folder(@client, "/Backup")
     end
 
     @tag :tmp_dir
@@ -71,16 +72,18 @@ defmodule MagpieTest do
         Req.Test.json(conn, %{"name" => "hello.txt", "size" => 13})
       end)
 
-      assert {:ok, %{"name" => "hello.txt"}} = Magpie.Files.upload(@client, "/hello.txt", local)
+      assert {:ok, %Magpie.FileMetadata{name: "hello.txt", size: 13}} =
+               Magpie.Files.upload(@client, "/hello.txt", local)
     end
 
     test "move/3 posts to /files/move_v2" do
       Req.Test.stub(Magpie, fn conn ->
         assert conn.request_path == "/2/files/move_v2"
-        Req.Test.json(conn, %{"metadata" => %{"name" => "algebra"}})
+        Req.Test.json(conn, %{"metadata" => %{".tag" => "folder", "name" => "algebra"}})
       end)
 
-      assert {:ok, %{"metadata" => _}} = Magpie.Files.move(@client, "/math", "/algebra")
+      assert {:ok, %Magpie.FolderMetadata{name: "algebra"}} =
+               Magpie.Files.move(@client, "/math", "/algebra")
     end
 
     test "search/3 posts query and options to /files/search_v2" do
@@ -116,7 +119,7 @@ defmodule MagpieTest do
         Req.Test.json(conn, %{"entries" => [%{".tag" => "folder", "name" => "Backup"}]})
       end)
 
-      assert {:ok, %{"entries" => [%{"name" => "Backup"}]}} =
+      assert {:ok, %{"entries" => [%Magpie.FolderMetadata{name: "Backup"}]}} =
                Magpie.Files.ListFolder.list_folder(@client, "")
     end
 
@@ -242,13 +245,28 @@ defmodule MagpieTest do
   end
 
   describe "struct helpers" do
-    test "Files.create_folder_to_struct/2 returns a Folder struct" do
+    # The legacy helpers are deprecated; `apply/3` keeps the suite free of
+    # compile-time deprecation warnings while still exercising them.
+    test "Files.create_folder_to_struct/2 returns a legacy Folder struct" do
       Req.Test.stub(Magpie, fn conn ->
-        Req.Test.json(conn, %{"id" => "id:1", "name" => "Backup", "path_lower" => "/backup"})
+        Req.Test.json(conn, %{
+          "metadata" => %{"id" => "id:1", "name" => "Backup", "path_lower" => "/backup"}
+        })
       end)
 
-      assert {:ok, %Magpie.Folder{id: "id:1", name: "Backup"}} =
-               Magpie.Files.create_folder_to_struct(@client, "/Backup")
+      assert {:ok, %Magpie.Folder{id: "id:1", name: "Backup", path_lower: "/backup"}} =
+               apply(Magpie.Files, :create_folder_to_struct, [@client, "/Backup"])
+    end
+
+    test "Files.delete_folder_to_struct/2 returns a legacy Folder struct for files too" do
+      Req.Test.stub(Magpie, fn conn ->
+        Req.Test.json(conn, %{
+          "metadata" => %{".tag" => "file", "id" => "id:2", "name" => "a.txt", "rev" => "1"}
+        })
+      end)
+
+      assert {:ok, %Magpie.Folder{id: "id:2", name: "a.txt"}} =
+               apply(Magpie.Files, :delete_folder_to_struct, [@client, "/a.txt"])
     end
 
     test "Files.delete_folder_to_struct/2 returns an error tuple on failure" do
@@ -259,7 +277,7 @@ defmodule MagpieTest do
       end)
 
       assert {:error, %Magpie.Error{status: 409}} =
-               Magpie.Files.delete_folder_to_struct(@client, "/x")
+               apply(Magpie.Files, :delete_folder_to_struct, [@client, "/x"])
     end
 
     test "Sharing.create_shared_link_to_struct/2 returns a SharedLink struct" do
@@ -317,7 +335,9 @@ defmodule MagpieTest do
       alias Magpie.Files.UploadSession
       assert {:ok, %{"session_id" => "s1"}} = UploadSession.start(@client, false, local)
       assert {:ok, _} = UploadSession.append(@client, "s1", false, local)
-      assert {:ok, %{"name" => _}} = UploadSession.finish(@client, "s1", "/chunk.bin", local)
+
+      assert {:ok, %Magpie.FileMetadata{name: "chunk.bin"}} =
+               UploadSession.finish(@client, "s1", "/chunk.bin", local)
     end
   end
 

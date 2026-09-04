@@ -33,12 +33,13 @@ and PRs are welcome — open an
       `get_temporary_upload_link/3`, so the bytes bypass your server entirely,
       with the JS uploader entry shipped in `priv/static`
 
-## 0.4.0 — Typed metadata
+## 0.4.0 — Typed metadata ✅
 
-- [ ] Decode API responses into structs (`Magpie.FileMetadata`,
+- [x] Decode API responses into structs (`Magpie.FileMetadata`,
       `Magpie.FolderMetadata`, `Magpie.DeletedMetadata`) with proper types —
       `DateTime` timestamps, first-class `content_hash` — instead of raw maps
-      with `".tag"` keys
+      with `".tag"` keys, plus `Magpie.Metadata.content_hash/1` to verify
+      transfers locally ([upgrade guide](guides/upgrading.md))
 
 ## 0.5.0 — Reacting to changes
 
@@ -56,8 +57,9 @@ and PRs are welcome — open an
 
 - [ ] Streaming download to disk (`download_file/3` mirroring `upload_file/4`,
       without loading the file into memory)
-- [ ] Dropbox `content_hash` helper — verify integrity after transfers and skip
-      uploads of unchanged files (`verify: true` / `skip_unchanged: true`)
+- [ ] `verify: true` / `skip_unchanged: true` options for `upload_file/4`,
+      built on `Magpie.Metadata.content_hash/1` — verify integrity after
+      transfers and skip uploads of unchanged files
 - [ ] Rate-limit aware retries — honor `Retry-After` on 429/503 out of the box
 - [ ] `:telemetry` events for every request
 - [ ] `Dropbox-API-Path-Root` support — access team space namespaces, not just

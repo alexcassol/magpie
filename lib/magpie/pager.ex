@@ -10,7 +10,7 @@ defmodule Magpie.Pager do
 
       client
       |> Magpie.Files.ListFolder.stream("/Photos")
-      |> Stream.filter(&(&1[".tag"] == "file"))
+      |> Stream.filter(&match?(%Magpie.FileMetadata{}, &1))
       |> Enum.take(100)
 
   Ready-made wrappers: `Magpie.Files.ListFolder.stream/2`,

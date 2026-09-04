@@ -1,8 +1,13 @@
 defmodule Magpie.Files.ListFolder do
   @moduledoc """
   Folder listing and change-cursor endpoints (`/files/list_folder*`).
+
+  Listing pages keep their `"cursor"` and `"has_more"` keys, but every entry
+  is decoded into a `Magpie.FileMetadata`, `Magpie.FolderMetadata` or
+  `Magpie.DeletedMetadata` struct — see `Magpie.Metadata`.
   """
   alias Magpie.Client
+  alias Magpie.Metadata
   import Magpie
 
   @doc """
@@ -10,16 +15,20 @@ defmodule Magpie.Files.ListFolder do
   `/files/list_folder` argument fields, e.g. `"recursive"`, `"limit"`,
   `"include_deleted"` and `"include_restorable_info"`.
 
-  ##Example
+  ## Example
 
-     Magpie.Files.ListFolder.list_folder client, "/path"
+      {:ok, %{"entries" => [%Magpie.FolderMetadata{} | _], "cursor" => cursor, "has_more" => true}} =
+        Magpie.Files.ListFolder.list_folder(client, "/path")
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-list_folder
   """
   @spec list_folder(Client.t(), binary, map) :: Magpie.response()
   def list_folder(client, path, opts \\ %{}) do
     body = Map.merge(%{"path" => path}, opts)
-    post(client, "/files/list_folder", body)
+
+    client
+    |> post("/files/list_folder", body)
+    |> Metadata.map_ok(&Metadata.decode_page/1)
   end
 
   @doc """
@@ -31,8 +40,8 @@ defmodule Magpie.Files.ListFolder do
 
       client
       |> Magpie.Files.ListFolder.stream("/Photos")
-      |> Stream.filter(&(&1[".tag"] == "file"))
-      |> Enum.map(& &1["name"])
+      |> Stream.filter(&match?(%Magpie.FileMetadata{}, &1))
+      |> Enum.map(& &1.name)
 
   """
   def stream(client, path, opts \\ %{}) do
@@ -47,42 +56,50 @@ defmodule Magpie.Files.ListFolder do
   use this to paginate through all files and retrieve updates to the folder,
   following the same rules as documented for list_folder.
 
-  ##Example
+  ## Example
 
-     Magpie.Files.ListFolder.list_folder_continue client, ""
+      Magpie.Files.ListFolder.list_folder_continue(client, cursor)
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-list_folder-continue
   """
   @spec list_folder_continue(Client.t(), binary) :: Magpie.response()
   def list_folder_continue(client, cursor) do
     body = %{"cursor" => cursor}
-    post(client, "/files/list_folder/continue", body)
+
+    client
+    |> post("/files/list_folder/continue", body)
+    |> Metadata.map_ok(&Metadata.decode_page/1)
   end
 
   @doc """
-  Return revisions of a file. `opts` accepts the other `/files/list_revisions`
-  argument fields, e.g. `"mode"`, `"before_rev"` and `"include_restorable_info"`.
+  Return revisions of a file, each a `Magpie.FileMetadata`. `opts` accepts
+  the other `/files/list_revisions` argument fields, e.g. `"mode"`,
+  `"before_rev"` and `"include_restorable_info"`.
 
-  ##Example
+  ## Example
 
-     Magpie.Files.ListFolder.list_revisions client, ""
+      {:ok, %{"entries" => [%Magpie.FileMetadata{rev: rev} | _], "is_deleted" => false}} =
+        Magpie.Files.ListFolder.list_revisions(client, "/report.pdf")
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-list_revisions
   """
   @spec list_revisions(Client.t(), binary, number, map) :: Magpie.response()
   def list_revisions(client, path, limit \\ 10, opts \\ %{}) do
     body = Map.merge(%{"path" => path, "limit" => limit}, opts)
-    post(client, "/files/list_revisions", body)
+
+    client
+    |> post("/files/list_revisions", body)
+    |> Metadata.map_ok(&Metadata.decode_page(&1, :file))
   end
 
   @doc """
   A way to quickly get a cursor for the folder's state.
 
-  ##Example
+  ## Example
 
-     Magpie.Files.ListFolder.get_latest_cursor client, ""
+      Magpie.Files.ListFolder.get_latest_cursor(client, "/path")
 
-  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-list_revisions
+  More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-list_folder-get_latest_cursor
   """
   @spec get_latest_cursor(Client.t(), binary) :: Magpie.response()
   def get_latest_cursor(client, path) do
@@ -93,9 +110,9 @@ defmodule Magpie.Files.ListFolder do
   @doc """
   A longpoll endpoint to wait for changes on an account.
 
-  ##Example
+  ## Example
 
-     Magpie.Files.ListFolder.longpoll client, ""
+      Magpie.Files.ListFolder.longpoll(client, cursor)
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-list_folder-longpoll
   """

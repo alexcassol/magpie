@@ -22,7 +22,7 @@ defmodule MagpieFlowsTest do
         Req.Test.json(conn, %{"name" => "small.txt"})
       end)
 
-      assert {:ok, %{"name" => "small.txt"}} =
+      assert {:ok, %Magpie.FileMetadata{name: "small.txt"}} =
                Magpie.Files.upload_file(@client, "/small.txt", local)
     end
 
@@ -39,7 +39,7 @@ defmodule MagpieFlowsTest do
         respond_session(conn, conn.request_path)
       end)
 
-      assert {:ok, %{"name" => "big.bin"}} =
+      assert {:ok, %Magpie.FileMetadata{name: "big.bin"}} =
                Magpie.Files.upload_file(@client, "/big.bin", local,
                  session_threshold: 1,
                  chunk_size: 5
@@ -115,7 +115,7 @@ defmodule MagpieFlowsTest do
       names =
         @client
         |> Magpie.Files.ListFolder.stream("/Photos")
-        |> Enum.map(& &1["name"])
+        |> Enum.map(fn %Magpie.FileMetadata{name: name} -> name end)
 
       assert names == ["a.jpg", "b.jpg", "c.jpg"]
       assert_received {:page_request, "/2/files/list_folder"}
@@ -131,7 +131,7 @@ defmodule MagpieFlowsTest do
         respond_page(conn, conn.request_path, Jason.decode!(body))
       end)
 
-      assert [%{"name" => "a.jpg"}] =
+      assert [%Magpie.FileMetadata{name: "a.jpg"}] =
                @client |> Magpie.Files.ListFolder.stream("/Photos") |> Enum.take(1)
 
       assert_received {:page_request, "/2/files/list_folder"}
@@ -150,12 +150,21 @@ defmodule MagpieFlowsTest do
       end
     end
 
-    test "search_stream paginates over matches" do
+    test "search_stream paginates over matches and decodes their metadata" do
       Req.Test.stub(Magpie, fn conn ->
-        Req.Test.json(conn, %{"matches" => [%{"id" => 1}], "has_more" => false})
+        match = %{
+          "match_type" => %{".tag" => "filename"},
+          "metadata" => %{
+            ".tag" => "metadata",
+            "metadata" => %{".tag" => "file", "name" => "q.txt", "rev" => "015"}
+          }
+        }
+
+        Req.Test.json(conn, %{"matches" => [match], "has_more" => false})
       end)
 
-      assert [%{"id" => 1}] = @client |> Magpie.Files.search_stream("q") |> Enum.to_list()
+      assert [%{"match_type" => _, "metadata" => %Magpie.FileMetadata{name: "q.txt"}}] =
+               @client |> Magpie.Files.search_stream("q") |> Enum.to_list()
     end
 
     test "FileRequests.stream and Sharing.list_folders_stream paginate their items" do
@@ -177,7 +186,10 @@ defmodule MagpieFlowsTest do
 
     defp respond_page(conn, "/2/files/list_folder", _body) do
       Req.Test.json(conn, %{
-        "entries" => [%{"name" => "a.jpg"}, %{"name" => "b.jpg"}],
+        "entries" => [
+          %{".tag" => "file", "name" => "a.jpg", "rev" => "1"},
+          %{".tag" => "file", "name" => "b.jpg", "rev" => "2"}
+        ],
         "cursor" => "cursor-1",
         "has_more" => true
       })
@@ -185,7 +197,7 @@ defmodule MagpieFlowsTest do
 
     defp respond_page(conn, "/2/files/list_folder/continue", %{"cursor" => "cursor-1"}) do
       Req.Test.json(conn, %{
-        "entries" => [%{"name" => "c.jpg"}],
+        "entries" => [%{".tag" => "file", "name" => "c.jpg", "rev" => "3"}],
         "cursor" => "cursor-2",
         "has_more" => false
       })

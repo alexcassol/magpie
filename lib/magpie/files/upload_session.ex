@@ -1,8 +1,15 @@
 defmodule Magpie.Files.UploadSession do
   @moduledoc """
-  This namespace contains endpoints and data types for basic file operations.
+  Upload sessions (`/files/upload_session/*`) — uploading a file in several
+  requests, for content above the 150 MB single-request limit.
+
+  `finish/8` and `finish_data/5` return the committed file's
+  `Magpie.FileMetadata`. The batch variants (`finish_batch/2`,
+  `finish_batch_check/2`) keep Dropbox's per-entry result maps, since each
+  entry is a `success`/`failure` union rather than plain metadata.
   """
   import Magpie
+  alias Magpie.Metadata
 
   @doc """
   Upload sessions allow you to upload a single file in one or more requests,
@@ -66,6 +73,7 @@ defmodule Magpie.Files.UploadSession do
 
   @doc """
   Finish an upload session and save the uploaded data to the given file path.
+  Returns the committed file's `Magpie.FileMetadata`.
 
   ## Example
 
@@ -96,13 +104,9 @@ defmodule Magpie.Files.UploadSession do
       "Content-Type" => "application/octet-stream"
     }
 
-    upload_request(
-      client,
-      upload_url(),
-      "files/upload_session/finish",
-      file,
-      headers
-    )
+    client
+    |> upload_request(upload_url(), "files/upload_session/finish", file, headers)
+    |> Metadata.map_ok(&Metadata.decode(&1, :file))
   end
 
   @doc """
@@ -164,7 +168,8 @@ defmodule Magpie.Files.UploadSession do
   Finishes the upload session `session_id`, committing the uploaded bytes to
   the path given in `commit` (a map with the `/files/upload` argument fields,
   e.g. `%{"path" => "/backup.zip", "mode" => "add"}`). Optional trailing
-  `data` is appended before committing.
+  `data` is appended before committing. Returns the committed file's
+  `Magpie.FileMetadata`.
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-upload_session-finish
   """
@@ -179,7 +184,9 @@ defmodule Magpie.Files.UploadSession do
       "Content-Type" => "application/octet-stream"
     }
 
-    upload_data_request(client, upload_url(), "files/upload_session/finish", data, headers)
+    client
+    |> upload_data_request(upload_url(), "files/upload_session/finish", data, headers)
+    |> Metadata.map_ok(&Metadata.decode(&1, :file))
   end
 
   @doc """

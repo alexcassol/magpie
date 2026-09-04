@@ -22,11 +22,11 @@ defmodule Magpie.LiveView.UploadWriter do
         )
 
   `consume_uploaded_entries/3` then receives whatever `meta/1` returns, so the
-  Dropbox metadata of the committed file is already there — nothing left to
-  upload:
+  `Magpie.FileMetadata` of the committed file is already there — nothing left
+  to upload:
 
       consume_uploaded_entries(socket, :report, fn %{metadata: metadata}, _entry ->
-        {:ok, metadata}
+        {:ok, metadata.path_display}
       end)
 
   ## Options
@@ -93,7 +93,7 @@ defmodule Magpie.LiveView.UploadWriter do
 
   @doc """
   What `consume_uploaded_entries/3` receives: the destination path and the
-  Dropbox metadata of the committed file.
+  `Magpie.FileMetadata` of the committed file.
   """
   def meta(state), do: %{path: state.commit["path"], metadata: state.metadata}
 
