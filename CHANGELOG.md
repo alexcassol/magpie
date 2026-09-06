@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-06
+
+Storage reliability and documentation improvements.
+
 ### Fixed
 
 - `Magpie.Storage.list/3` now returns Req transport failures as
@@ -252,7 +256,8 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
-[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/alexcassol/magpie/releases/tag/v0.5.1
 [0.5.0]: https://github.com/alexcassol/magpie/releases/tag/v0.5.0
 [0.4.0]: https://github.com/alexcassol/magpie/releases/tag/v0.4.0
 [0.3.2]: https://github.com/alexcassol/magpie/releases/tag/v0.3.2
