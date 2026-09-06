@@ -99,9 +99,9 @@ end
 The API reference lives on [HexDocs](https://hexdocs.pm/magpie), along with
 the guides:
 
-- [Examples](https://magpie.hexdocs.pm/examples.html) — recipes for uploads,
-  downloads, lazy listing, batch jobs, shared links, file requests, error
-  handling and testing your app
+- [Examples](https://magpie.hexdocs.pm/examples.html) — the complete
+  `Magpie.Storage` workflow plus recipes for lower-level uploads, downloads,
+  lazy listing, batch jobs, shared links, error handling and testing your app
 - [OAuth 2 & token refresh](https://magpie.hexdocs.pm/oauth.html) — getting a
   refresh token, the web redirect flow, PKCE, running the token server,
   persisting tokens and custom providers

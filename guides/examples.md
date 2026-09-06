@@ -76,6 +76,78 @@ flow, PKCE for apps that cannot keep a secret, persisting tokens with
 `:on_refresh`, and writing your own `Magpie.Auth.TokenProvider` when tokens
 live in your database.
 
+## Using Dropbox as simple storage
+
+`Magpie.Storage` is the recommended entry point when you need storage rather
+than a Dropbox-specific endpoint. It offers an object-storage-style API while
+still using Dropbox paths — there are no S3 buckets or S3 compatibility:
+
+```elixir
+alias Magpie.Storage
+
+# A local file: small files use one request, large ones use an upload session
+{:ok, %Magpie.FileMetadata{} = invoice} =
+  Storage.put(client, "/Invoices/2026-09.pdf", {:file, "priv/invoice.pdf"})
+
+# In-memory content can be a binary or iodata
+{:ok, %Magpie.FileMetadata{}} =
+  Storage.put(
+    client,
+    "/Exports/status.json",
+    {:binary, Jason.encode_to_iodata!(%{status: "ready"})},
+    mode: "overwrite"
+  )
+
+# Any enumerable of binary/iodata chunks is uploaded without collecting it all
+csv_rows = Stream.map(rows, fn row -> [to_string(row.id), ",", row.email, "\n"] end)
+{:ok, %Magpie.FileMetadata{}} =
+  Storage.put(client, "/Exports/users.csv", {:stream, csv_rows})
+```
+
+Use `get/3` when the file belongs in memory and `download/4` for large files.
+`download/4` writes to a temporary sibling first, so an API failure does not
+replace an existing destination:
+
+```elixir
+{:ok, json} = Storage.get(client, "/Exports/status.json")
+%{"status" => "ready"} = Jason.decode!(json)
+
+{:ok, "tmp/users.csv"} =
+  Storage.download(client, "/Exports/users.csv", "tmp/users.csv", mkdir_p: true)
+
+# Temporary direct-download links normally expire after four hours
+{:ok, url} = Storage.url(client, "/Invoices/2026-09.pdf")
+```
+
+Metadata, existence checks and listings use the same small interface:
+
+```elixir
+true = Storage.exists?(client, "/Invoices/2026-09.pdf")
+false = Storage.exists?(client, "/Invoices/missing.pdf")
+
+{:ok, %Magpie.FileMetadata{size: size, content_hash: hash}} =
+  Storage.stat(client, "/Invoices/2026-09.pdf")
+
+# Eager: returns all cursor pages in one list
+{:ok, entries} = Storage.list(client, "/Invoices", recursive: true)
+
+# Lazy: fetches only as many pages as the consumer needs
+recent_invoices =
+  client
+  |> Storage.stream("/Invoices", recursive: true)
+  |> Stream.filter(&match?(%Magpie.FileMetadata{}, &1))
+  |> Enum.take(10)
+
+{:ok, %Magpie.FileMetadata{}} =
+  Storage.delete(client, "/Invoices/2026-09.pdf")
+```
+
+Normal functions return `{:ok, value}` or `{:error, %Magpie.Error{}}`.
+For one-off scripts, bang variants such as `put!/4`, `get!/3`,
+`download!/4` and `delete!/3` return the value directly and raise on failure.
+Use `Magpie.Files` when you need Dropbox-specific operations beyond this
+storage interface.
+
 ## Uploading files
 
 `Magpie.Files.upload_file/4` picks the right strategy for you: small files go
@@ -285,6 +357,23 @@ end
 
 Paginated streams raise `Magpie.Error` instead, since a `Stream`
 cannot return a tuple mid-enumeration.
+
+For storage operations, the classification helpers avoid matching the exact
+Dropbox `error_summary`, which may gain extra path segments over time:
+
+```elixir
+case Magpie.Storage.get(client, "/Invoices/latest.pdf") do
+  {:ok, contents} ->
+    contents
+
+  {:error, %Magpie.Error{} = error} ->
+    cond do
+      Magpie.Error.not_found?(error) -> :missing
+      Magpie.Error.rate_limited?(error) -> :try_again_later
+      true -> raise error
+    end
+end
+```
 
 ## Testing your app
 
