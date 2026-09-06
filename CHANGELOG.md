@@ -5,7 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] - Unreleased
+## [Unreleased]
+
+### Fixed
+
+- `Magpie.Storage.list/3` now returns Req transport failures as
+  `{:error, exception}` instead of crashing the caller
+
+### Documentation
+
+- Added a complete `Magpie.Storage` workflow to the examples guide
+
+## [0.5.0] - 2026-09-06
 
 Storage ergonomics. Applications can now use Dropbox through a compact,
 object-storage-style API while the complete Dropbox-specific surface remains
@@ -241,6 +252,8 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
+[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/alexcassol/magpie/releases/tag/v0.5.0
 [0.4.0]: https://github.com/alexcassol/magpie/releases/tag/v0.4.0
 [0.3.2]: https://github.com/alexcassol/magpie/releases/tag/v0.3.2
 [0.3.1]: https://github.com/alexcassol/magpie/releases/tag/v0.3.1

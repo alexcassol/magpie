@@ -9,6 +9,31 @@ defmodule Magpie.StorageTest do
   @client Client.new("fake-token")
 
   describe "put/4" do
+    @tag :tmp_dir
+    test "uploads a file source and put! returns metadata directly", %{tmp_dir: dir} do
+      local = Path.join(dir, "source.txt")
+      File.write!(local, "from disk")
+
+      Req.Test.stub(Magpie, fn conn ->
+        assert Req.Test.raw_body(conn) == "from disk"
+        [arg] = Plug.Conn.get_req_header(conn, "dropbox-api-arg")
+        path = Jason.decode!(arg)["path"]
+        Req.Test.json(conn, %{"name" => Path.basename(path), "rev" => "1", "size" => 9})
+      end)
+
+      assert {:ok, %FileMetadata{name: "file.txt"}} =
+               Storage.put(@client, "/file.txt", {:file, local})
+
+      assert %FileMetadata{name: "bang.txt"} =
+               Storage.put!(@client, "/bang.txt", {:file, local})
+    end
+
+    test "rejects unknown source shapes" do
+      assert_raise ArgumentError, ~r/expected source/, fn ->
+        Storage.put(@client, "/bad", {:unknown, "data"})
+      end
+    end
+
     test "uploads in-memory content in one request" do
       Req.Test.stub(Magpie, fn conn ->
         assert conn.request_path == "/2/files/upload"
@@ -143,6 +168,16 @@ defmodule Magpie.StorageTest do
       assert File.read!(destination) == "original"
       assert Path.wildcard(destination <> ".magpie-*.part") == []
     end
+
+    @tag :tmp_dir
+    test "download! raises when the local destination cannot be opened", %{tmp_dir: dir} do
+      destination = Path.join([dir, "missing-parent", "file.txt"])
+      Req.Test.stub(Magpie, &Plug.Conn.send_resp(&1, 200, "contents"))
+
+      assert_raise RuntimeError, ~r/:enoent/, fn ->
+        Storage.download!(@client, "/file.txt", destination)
+      end
+    end
   end
 
   describe "metadata and listing conveniences" do
@@ -187,6 +222,31 @@ defmodule Magpie.StorageTest do
                Storage.delete(@client, "/old.txt", parent_rev: "rev-1")
     end
 
+    test "delete! and stat! return typed metadata directly" do
+      Req.Test.stub(Magpie, fn conn ->
+        case conn.request_path do
+          "/2/files/delete_v2" ->
+            Req.Test.json(conn, %{
+              "metadata" => %{".tag" => "file", "name" => "old.txt", "rev" => "1", "size" => 2}
+            })
+
+          "/2/files/get_metadata" ->
+            Req.Test.json(conn, %{
+              ".tag" => "file",
+              "name" => "kept.txt",
+              "rev" => "2",
+              "size" => 3
+            })
+        end
+      end)
+
+      assert {:ok, %FileMetadata{name: "old.txt"}} = Storage.delete(@client, "/old.txt")
+      assert %FileMetadata{name: "old.txt"} = Storage.delete!(@client, "/old.txt")
+
+      assert {:ok, %FileMetadata{name: "kept.txt"}} = Storage.stat(@client, "/kept.txt")
+      assert %FileMetadata{name: "kept.txt"} = Storage.stat!(@client, "/kept.txt")
+    end
+
     test "list follows cursor pages and stream stays lazy" do
       Req.Test.stub(Magpie, fn conn ->
         case conn.request_path do
@@ -212,6 +272,25 @@ defmodule Magpie.StorageTest do
       assert [%FileMetadata{name: "one"}] =
                @client |> Storage.stream("/prefix") |> Enum.take(1)
     end
+
+    test "list returns Req transport failures instead of crashing the caller" do
+      Req.Test.stub(Magpie, &Req.Test.transport_error(&1, :timeout))
+
+      assert {:error, %Req.TransportError{reason: :timeout}} =
+               Storage.list(@client, "/scanner")
+
+      assert_raise Req.TransportError, fn -> Storage.list!(@client, "/scanner") end
+    end
+
+    test "root list and stream defaults return typed entries" do
+      Req.Test.stub(Magpie, fn conn ->
+        assert conn.body_params["path"] == ""
+        Req.Test.json(conn, %{"entries" => [], "has_more" => false})
+      end)
+
+      assert [] = Storage.list!(@client)
+      assert [] = @client |> Storage.stream() |> Enum.to_list()
+    end
   end
 
   describe "temporary URLs and bang variants" do
@@ -232,6 +311,34 @@ defmodule Magpie.StorageTest do
 
       assert "https://upload.example/a" =
                Storage.upload_url!(@client, "/a.txt", duration: 60)
+    end
+
+    test "URL defaults and url! return direct links" do
+      Req.Test.stub(Magpie, fn conn ->
+        case conn.request_path do
+          "/2/files/get_temporary_link" ->
+            Req.Test.json(conn, %{"link" => "https://download.example/default"})
+
+          "/2/files/get_temporary_upload_link" ->
+            assert conn.body_params["duration"] == 14_400
+            Req.Test.json(conn, %{"link" => "https://upload.example/default"})
+        end
+      end)
+
+      assert "https://download.example/default" = Storage.url!(@client, "/default.txt")
+
+      assert {:ok, "https://upload.example/default"} =
+               Storage.upload_url(@client, "/default.txt")
+    end
+
+    test "temporary URL errors stay normalized" do
+      Req.Test.stub(Magpie, fn conn ->
+        conn
+        |> Plug.Conn.put_status(409)
+        |> Req.Test.json(%{"error_summary" => "path/not_found/.."})
+      end)
+
+      assert {:error, %Error{status: 409}} = Storage.url(@client, "/missing")
     end
 
     test "bang variants raise normalized Dropbox errors" do

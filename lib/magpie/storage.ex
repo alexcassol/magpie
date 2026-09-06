@@ -131,13 +131,19 @@ defmodule Magpie.Storage do
   @doc "Like `stat/3`, but returns metadata directly and raises on failure."
   def stat!(client, key, opts \\ []), do: stat(client, key, opts) |> unwrap!()
 
-  @doc "Returns all entries below `prefix`, following every cursor page."
+  @doc """
+  Returns all entries below `prefix`, following every cursor page.
+
+  Unlike the lazy `stream/3`, this eager convenience returns Dropbox API and
+  Req transport failures as `{:error, exception}`. This lets background jobs
+  handle a failed listing without crashing the worker.
+  """
   @spec list(Magpie.Client.t(), binary(), keyword()) ::
-          {:ok, [Magpie.Metadata.t()]} | {:error, Error.t()}
+          {:ok, [Magpie.Metadata.t()]} | {:error, Exception.t()}
   def list(client, prefix \\ "", opts \\ []) do
     {:ok, client |> stream(prefix, opts) |> Enum.to_list()}
   rescue
-    error in Error -> {:error, error}
+    error in [Error, Req.TransportError, Req.HTTPError] -> {:error, error}
   end
 
   @doc "Like `list/3`, but returns entries directly and raises on failure."
