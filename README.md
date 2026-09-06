@@ -15,7 +15,7 @@ Like the bird, Magpie collects and stashes your things — in your Dropbox.
 ```elixir
 def deps do
   [
-    {:magpie, "~> 0.4"}
+    {:magpie, "~> 0.5"}
   ]
 end
 ```
@@ -38,10 +38,17 @@ client =
 # For a quick script, a static access token works too (Dropbox expires it in ~4h)
 client = Magpie.Client.new("DROPBOX_ACCESS_TOKEN")
 
-{:ok, account} = Magpie.Users.current_account(client)
-{:ok, %{"entries" => entries}} = Magpie.Files.ListFolder.list_folder(client, "/Photos")
-{:ok, %Magpie.FileMetadata{size: size}} = Magpie.Files.upload_file(client, "/Backup/report.pdf", "priv/report.pdf")
-{:ok, %{body: contents}} = Magpie.Files.download(client, "/Backup/report.pdf")
+alias Magpie.Storage
+
+{:ok, %Magpie.FileMetadata{size: size}} =
+  Storage.put(client, "/Backup/report.pdf", {:file, "priv/report.pdf"})
+
+{:ok, contents} = Storage.get(client, "/Backup/report.pdf")
+{:ok, url} = Storage.url(client, "/Backup/report.pdf")
+
+# Large downloads stream directly to disk instead of living in BEAM memory
+{:ok, "tmp/report.pdf"} =
+  Storage.download(client, "/Backup/report.pdf", "tmp/report.pdf", mkdir_p: true)
 ```
 
 Every call returns `{:ok, result}` on success or `{:error, %Magpie.Error{}}`
@@ -58,6 +65,11 @@ end
 
 ## Features
 
+- **Simple storage API** — `Magpie.Storage` covers the common path with
+  `put`, `get`, `download`, `delete`, `exists?`, `stat`, `list`, `stream`
+  and temporary URLs. Upload a local file, binary/iodata or arbitrary stream;
+  large transfers automatically use Dropbox upload sessions and downloads
+  stream atomically to disk.
 - **Complete coverage** — all current user-scoped routes of the Dropbox API
   v2 (`files`, `sharing`, `file_properties`, `file_requests`, `users`,
   `account`, `auth`, `check`, `contacts`, `openid`), verified against the
@@ -97,14 +109,6 @@ the guides:
   controllers, `UploadWriter`, direct browser → Dropbox uploads
 - [Upgrading to 0.4](https://magpie.hexdocs.pm/upgrading.html) — every call
   whose result changed with typed metadata, with 0.3 and 0.4 side by side
-
-## Roadmap
-
-Planned work — webhooks, a folder watcher, streaming downloads and more —
-is tracked in
-[ROADMAP.md](https://github.com/alexcassol/magpie/blob/main/ROADMAP.md).
-Suggestions and PRs are welcome — open an
-[issue](https://github.com/alexcassol/magpie/issues).
 
 ## Development
 

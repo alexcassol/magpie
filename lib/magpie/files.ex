@@ -62,7 +62,7 @@ defmodule Magpie.Files do
   or FolderMetadata for the item at time of deletion, and not a DeletedMetadata object.
 
   Returns the `Magpie.FileMetadata` or `Magpie.FolderMetadata` of the
-  deleted item.
+  deleted item. `opts` accepts Dropbox's optional `"parent_rev"` field.
 
   ## Example
 
@@ -71,11 +71,11 @@ defmodule Magpie.Files do
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-delete_v2
   """
-  @spec delete_folder(Client.t(), binary) ::
+  @spec delete_folder(Client.t(), binary, map) ::
           {:ok, Magpie.FileMetadata.t() | Magpie.FolderMetadata.t()}
           | {:error, Magpie.Error.t()}
-  def delete_folder(client, path) do
-    body = %{"path" => path}
+  def delete_folder(client, path, opts \\ %{}) do
+    body = Map.merge(%{"path" => path}, opts)
 
     client
     |> post("/files/delete_v2", body)
@@ -307,40 +307,126 @@ defmodule Magpie.Files do
         )
 
       {:ok, %File.Stat{}} ->
-        upload_via_session(client, path, local_path, opts)
+        upload_via_session(client, path, File.stream!(local_path, chunk_size(opts)), opts)
 
       {:error, reason} ->
         {:error, reason}
     end
   end
 
-  defp upload_via_session(client, path, local_path, opts) do
-    chunk_size = Keyword.get(opts, :chunk_size, @default_chunk_size)
+  @doc """
+  Uploads binary or iodata content, selecting a single request or an upload
+  session from its byte size. For an enumerable whose size is not known in
+  advance, use `upload_stream/4`.
+  """
+  @spec upload_data(Client.t(), binary(), iodata(), keyword()) ::
+          {:ok, Magpie.FileMetadata.t()} | {:error, Magpie.Error.t()}
+  def upload_data(client, path, data, opts \\ []) do
+    threshold = Keyword.get(opts, :session_threshold, @session_threshold)
 
-    commit = %{
-      "path" => path,
-      "mode" => Keyword.get(opts, :mode, "add"),
-      "autorename" => Keyword.get(opts, :autorename, true),
-      "mute" => Keyword.get(opts, :mute, false)
+    if IO.iodata_length(data) <= threshold do
+      upload_data_once(client, path, data, opts)
+    else
+      upload_via_session(
+        client,
+        path,
+        binary_chunks(IO.iodata_to_binary(data), chunk_size(opts)),
+        opts
+      )
+    end
+  end
+
+  @doc """
+  Streams an enumerable of binary or iodata chunks into a Dropbox upload
+  session. Chunks from the enumerable may have any size; Magpie buffers at
+  most one configured upload chunk and sends the final partial chunk with
+  the commit request.
+  """
+  @spec upload_stream(Client.t(), binary(), Enumerable.t(), keyword()) ::
+          {:ok, Magpie.FileMetadata.t()} | {:error, Magpie.Error.t()}
+  def upload_stream(client, path, enumerable, opts \\ []) do
+    upload_via_session(client, path, enumerable, opts)
+  end
+
+  defp upload_data_once(client, path, data, opts) do
+    headers = %{
+      "Dropbox-API-Arg" => Jason.encode!(commit(path, opts)),
+      "Content-Type" => "application/octet-stream"
     }
 
+    client
+    |> upload_data_request(upload_url(), "files/upload", data, headers)
+    |> Metadata.map_ok(&Metadata.decode(&1, :file))
+  end
+
+  defp upload_via_session(client, path, enumerable, opts) do
+    chunk_size = chunk_size(opts)
+    commit = commit(path, opts)
+
     with {:ok, %{"session_id" => session_id}} <- UploadSession.start_data(client, "") do
-      local_path
-      |> File.stream!(chunk_size)
-      |> Enum.reduce_while({:ok, 0}, fn chunk, {:ok, offset} ->
-        case UploadSession.append_data(client, session_id, offset, chunk) do
-          {:ok, _} -> {:cont, {:ok, offset + byte_size(chunk)}}
-          error -> {:halt, error}
+      enumerable
+      |> Enum.reduce_while({:ok, 0, <<>>}, fn piece, {:ok, offset, buffer} ->
+        data = buffer <> chunk_to_binary(piece)
+        {chunks, rest} = split_full_chunks(data, chunk_size)
+
+        case append_chunks(chunks, client, session_id, offset) do
+          {:ok, next_offset} -> {:cont, {:ok, next_offset, rest}}
+          {:error, _} = error -> {:halt, error}
         end
       end)
       |> finish_session(client, session_id, commit)
     end
   end
 
-  defp finish_session({:ok, offset}, client, session_id, commit),
-    do: UploadSession.finish_data(client, session_id, offset, commit)
+  defp finish_session({:ok, offset, tail}, client, session_id, commit),
+    do: UploadSession.finish_data(client, session_id, offset, commit, tail)
 
   defp finish_session(error, _client, _session_id, _commit), do: error
+
+  defp append_chunks(chunks, client, session_id, offset) do
+    Enum.reduce_while(chunks, {:ok, offset}, fn chunk, {:ok, current_offset} ->
+      case UploadSession.append_data(client, session_id, current_offset, chunk) do
+        {:ok, _} -> {:cont, {:ok, current_offset + byte_size(chunk)}}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp split_full_chunks(data, chunk_size), do: split_full_chunks(data, chunk_size, [])
+
+  defp split_full_chunks(data, chunk_size, chunks) when byte_size(data) >= chunk_size do
+    <<chunk::binary-size(^chunk_size), rest::binary>> = data
+    split_full_chunks(rest, chunk_size, [chunk | chunks])
+  end
+
+  defp split_full_chunks(rest, _chunk_size, chunks), do: {Enum.reverse(chunks), rest}
+
+  defp binary_chunks(binary, chunk_size) do
+    Stream.unfold(binary, fn
+      <<>> -> nil
+      data when byte_size(data) <= chunk_size -> {data, <<>>}
+      <<chunk::binary-size(^chunk_size), rest::binary>> -> {chunk, rest}
+    end)
+  end
+
+  defp chunk_to_binary(piece) when is_integer(piece) and piece in 0..255, do: <<piece>>
+  defp chunk_to_binary(piece), do: IO.iodata_to_binary(piece)
+
+  defp chunk_size(opts) do
+    case Keyword.get(opts, :chunk_size, @default_chunk_size) do
+      size when is_integer(size) and size > 0 -> size
+      size -> raise ArgumentError, ":chunk_size must be a positive integer, got: #{inspect(size)}"
+    end
+  end
+
+  defp commit(path, opts) do
+    %{
+      "path" => path,
+      "mode" => Keyword.get(opts, :mode, "add"),
+      "autorename" => Keyword.get(opts, :autorename, true),
+      "mute" => Keyword.get(opts, :mute, false)
+    }
+  end
 
   @doc """
   Download a file from a user's Dropbox.
@@ -365,6 +451,21 @@ defmodule Magpie.Files do
       [],
       headers
     )
+  end
+
+  @doc """
+  Streams a Dropbox file directly to `destination` without loading it into
+  BEAM memory. The destination is replaced only after a successful response.
+
+  Returns `{:ok, %{path: destination, headers: headers}}`, a normalized
+  Dropbox API error, or `{:error, posix}` for a local filesystem error.
+  """
+  @spec download_file(Client.t(), binary(), Path.t()) ::
+          {:ok, %{path: Path.t(), headers: list() | map()}}
+          | {:error, Magpie.Error.t() | File.posix()}
+  def download_file(client, path, destination) do
+    headers = %{"Dropbox-API-Arg" => Jason.encode!(%{"path" => path})}
+    download_file_request(client, upload_url(), "files/download", [], headers, destination)
   end
 
   @doc """

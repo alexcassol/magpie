@@ -143,6 +143,67 @@ defmodule Magpie do
     |> download_response()
   end
 
+  @doc """
+  Download a content endpoint directly to `destination` without accumulating
+  the response body in memory.
+
+  The response is first written to a temporary sibling file and only moved to
+  `destination` after Dropbox returns a successful response. Existing files
+  are therefore left untouched when Dropbox returns an API error.
+  """
+  @spec download_file_request(struct(), binary(), binary(), term(), map(), Path.t()) ::
+          {:ok, %{path: Path.t(), headers: list() | map()}}
+          | {:error, Magpie.Error.t() | File.posix()}
+  def download_file_request(client, base_url, url, data, headers, destination) do
+    do_download_file_request(
+      client,
+      base_url,
+      url,
+      data,
+      headers,
+      destination,
+      temporary_download_path(destination)
+    )
+  end
+
+  defp do_download_file_request(
+         client,
+         base_url,
+         url,
+         data,
+         headers,
+         destination,
+         temporary
+       ) do
+    try do
+      result =
+        client
+        |> new_req(base_url: base_url, headers: headers)
+        |> Req.post!(url: url, body: data, into: File.stream!(temporary))
+        |> download_response()
+
+      case result do
+        {:ok, %{headers: response_headers}} ->
+          case File.rename(temporary, destination) do
+            :ok -> {:ok, %{path: destination, headers: response_headers}}
+            {:error, reason} -> {:error, reason}
+          end
+
+        {:error, _} = error ->
+          error
+      end
+    rescue
+      error in File.Error -> {:error, error.reason}
+    after
+      _ = File.rm(temporary)
+    end
+  end
+
+  defp temporary_download_path(destination) do
+    suffix = System.unique_integer([:positive, :monotonic])
+    destination <> ".magpie-#{suffix}.part"
+  end
+
   def new_req(client, opts \\ []) do
     base_url = Keyword.get(opts, :base_url, base_url())
     headers = Keyword.get(opts, :headers, [])

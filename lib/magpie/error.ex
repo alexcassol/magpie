@@ -53,6 +53,59 @@ defmodule Magpie.Error do
 
   def new(status, body), do: %__MODULE__{status: status, body: body, summary: nil}
 
+  @doc "Returns whether Dropbox reported that the requested resource was not found."
+  @spec not_found?(term()) :: boolean()
+  def not_found?(%__MODULE__{status: 409} = error), do: tagged?(error, "not_found")
+  def not_found?(_), do: false
+
+  @doc "Returns whether Dropbox reported a path, file, or folder conflict."
+  @spec conflict?(term()) :: boolean()
+  def conflict?(%__MODULE__{status: 409} = error), do: tagged?(error, "conflict")
+  def conflict?(_), do: false
+
+  @doc "Returns whether Dropbox rate-limited the request."
+  @spec rate_limited?(term()) :: boolean()
+  def rate_limited?(%__MODULE__{status: 429}), do: true
+  def rate_limited?(_), do: false
+
+  @doc "Returns whether an error represents failed authentication or authorization."
+  @spec auth?(term()) :: boolean()
+  def auth?(%__MODULE__{status: status}) when status in [401, 403], do: true
+
+  def auth?(%__MODULE__{} = error),
+    do:
+      Enum.any?(
+        ["invalid_access_token", "expired_access_token", "invalid_grant"],
+        &tagged?(error, &1)
+      )
+
+  def auth?(_), do: false
+
+  @doc "Returns whether retrying the operation may succeed without changing it."
+  @spec retryable?(term()) :: boolean()
+  def retryable?(%__MODULE__{status: status}) when status == 429 or status in 500..599, do: true
+  def retryable?(_), do: false
+
+  defp tagged?(%__MODULE__{body: body, summary: summary}, tag) do
+    contains_tag?(body, tag) or summary_has_segment?(summary, tag)
+  end
+
+  defp contains_tag?(%{".tag" => tag}, tag), do: true
+  defp contains_tag?(%{tag: tag}, tag), do: true
+
+  defp contains_tag?(map, tag) when is_map(map),
+    do: Enum.any?(map, fn {_key, value} -> contains_tag?(value, tag) end)
+
+  defp contains_tag?(list, tag) when is_list(list),
+    do: Enum.any?(list, &contains_tag?(&1, tag))
+
+  defp contains_tag?(_value, _tag), do: false
+
+  defp summary_has_segment?(summary, tag) when is_binary(summary),
+    do: tag in String.split(summary, "/", trim: true)
+
+  defp summary_has_segment?(_summary, _tag), do: false
+
   @impl true
   def message(%__MODULE__{status: status, summary: nil, body: body}),
     do: "Dropbox returned status #{status}: #{inspect(body)}"

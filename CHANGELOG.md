@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - Unreleased
+
+Storage ergonomics. Applications can now use Dropbox through a compact,
+object-storage-style API while the complete Dropbox-specific surface remains
+available under `Magpie.Files` and the other namespace modules.
+
+### Added
+
+- `Magpie.Storage` with `put`, `get`, streaming `download`, `delete`,
+  `exists?`, `stat`, eager `list`, lazy `stream`, temporary download URLs and
+  one-use upload URLs
+- Explicit upload sources: `{:file, path}`, `{:binary, iodata}` and
+  `{:stream, enumerable}`; streams use upload sessions and are rechunked
+  without accumulating the whole input in memory
+- Bang variants for storage operations, convenient for scripts
+- `Magpie.Files.upload_data/4`, `upload_stream/4` and `download_file/3`
+- `Magpie.Error.not_found?/1`, `conflict?/1`, `rate_limited?/1`, `auth?/1`
+  and `retryable?/1`
+
+### Changed
+
+- Large file uploads now send their final partial chunk with the upload
+  session commit request
+- The public roadmap and its README link were removed
+
 ## [0.4.0] - 2026-09-04
 
 Typed metadata. The `files` endpoints now describe files and folders with

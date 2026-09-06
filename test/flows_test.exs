@@ -53,11 +53,9 @@ defmodule MagpieFlowsTest do
       assert_received {:call, "/2/files/upload_session/append_v2",
                        %{"cursor" => %{"offset" => 5}}, "56789"}
 
-      assert_received {:call, "/2/files/upload_session/append_v2",
-                       %{"cursor" => %{"offset" => 10}}, "AB"}
-
       assert_received {:call, "/2/files/upload_session/finish",
-                       %{"cursor" => %{"offset" => 12}, "commit" => %{"path" => "/big.bin"}}, ""}
+                       %{"cursor" => %{"offset" => 10}, "commit" => %{"path" => "/big.bin"}},
+                       "AB"}
     end
 
     @tag :tmp_dir
