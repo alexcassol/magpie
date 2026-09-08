@@ -1,7 +1,7 @@
 defmodule Magpie.MixProject do
   use Mix.Project
 
-  @version "0.5.1"
+  @version "0.6.0"
   @source_url "https://github.com/alexcassol/magpie"
 
   def project do
@@ -20,7 +20,7 @@ defmodule Magpie.MixProject do
   end
 
   def application do
-    [extra_applications: [:logger]]
+    [extra_applications: [:logger, :telemetry]]
   end
 
   def cli do
@@ -38,6 +38,7 @@ defmodule Magpie.MixProject do
     [
       {:req, "~> 0.7.4"},
       {:jason, "~> 1.4"},
+      {:telemetry, "~> 1.0"},
       {:plug, "~> 1.15", only: :test},
       {:excoveralls, "~> 0.18", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
@@ -62,7 +63,16 @@ defmodule Magpie.MixProject do
         Guides: ~r/guides\/.*/
       ],
       groups_for_modules: [
-        Core: [Magpie, Magpie.Client, Magpie.Error, Magpie.Storage, Magpie.Utils],
+        Core: [
+          Magpie,
+          Magpie.BatchError,
+          Magpie.Client,
+          Magpie.Error,
+          Magpie.IntegrityError,
+          Magpie.Storage,
+          Magpie.Telemetry,
+          Magpie.Utils
+        ],
         "OAuth & tokens": [
           Magpie.Auth,
           Magpie.Auth.Token,

@@ -21,12 +21,36 @@ defmodule Magpie do
 
   Extra options merged into every request (e.g. `plug: {Req.Test, Magpie}`
   for testing) can be set with `config :magpie, req_options: [...]`.
+
+  Known read-only Dropbox routes retry transient failures by default. Tune
+  the maximum attempts, log level, or delay controller with:
+
+      config :magpie,
+        retry: [max_retries: 3, log_level: :warning]
+
+  Setting `retry: false` disables automatic retries. A `:delay` integer or
+  one-arity function overrides `Retry-After`/exponential backoff. Mutation
+  routes are never retried automatically, regardless of this setting.
   """
 
   @default_base_url "https://api.dropboxapi.com/2"
   @default_upload_url "https://content.dropboxapi.com/2/"
   @default_oauth_authorize_url "https://www.dropbox.com/oauth2/authorize"
   @default_oauth_token_url "https://api.dropboxapi.com/oauth2/token"
+
+  # Dropbox's API is POST-only, including reads. Req therefore cannot infer
+  # which calls are safe to repeat from the HTTP method alone.
+  @retryable_reads MapSet.new([
+                     "/files/download",
+                     "/files/get_metadata",
+                     "/files/get_temporary_link",
+                     "/files/get_temporary_upload_link",
+                     "/files/list_folder",
+                     "/files/list_folder/continue",
+                     "/files/list_revisions",
+                     "/files/search_v2",
+                     "/files/search/continue_v2"
+                   ])
 
   @type response :: {:ok, term()} | {:error, Magpie.Error.t()}
 
@@ -78,8 +102,8 @@ defmodule Magpie do
 
   defp do_process_response(%Req.Response{status: 200, body: body}), do: {:ok, body}
 
-  defp do_process_response(%Req.Response{status: status, body: body}),
-    do: {:error, Magpie.Error.new(status, body)}
+  defp do_process_response(%Req.Response{status: status, body: body, headers: headers}),
+    do: {:error, Magpie.Error.new(status, body, headers)}
 
   @spec download_response(Req.Response.t()) :: response_download
   def download_response(%Req.Response{} = response) do
@@ -92,8 +116,8 @@ defmodule Magpie do
   defp do_download_response(%Req.Response{status: 200, body: body, headers: headers}),
     do: {:ok, %{body: body, headers: headers}}
 
-  defp do_download_response(%Req.Response{status: status, body: body}),
-    do: {:error, Magpie.Error.new(status, body)}
+  defp do_download_response(%Req.Response{status: status, body: body, headers: headers}),
+    do: {:error, Magpie.Error.new(status, body, headers)}
 
   # Errors produced by the auth steps (a token provider that could not hand
   # out a token) ride back on the response, already normalized.
@@ -104,13 +128,13 @@ defmodule Magpie do
 
   def post_request(req, url, "", headers) do
     req
-    |> Req.post!(url: url, headers: headers)
+    |> request!(url, headers: headers)
     |> process_response()
   end
 
   def post_request(req, url, body, headers) do
     req
-    |> Req.post!(url: url, headers: headers, json: body)
+    |> request!(url, headers: headers, json: body)
     |> process_response()
   end
 
@@ -121,7 +145,7 @@ defmodule Magpie do
   def upload_request(client, base_url, url, file, headers) do
     client
     |> new_req(base_url: base_url, headers: headers)
-    |> Req.post!(url: url, body: File.stream!(file, 64_000))
+    |> request!(url, body: File.stream!(file, 64_000))
     |> process_response()
   end
 
@@ -132,14 +156,14 @@ defmodule Magpie do
   def upload_data_request(client, base_url, url, data, headers) do
     client
     |> new_req(base_url: base_url, headers: headers)
-    |> Req.post!(url: url, body: data)
+    |> request!(url, body: data)
     |> process_response()
   end
 
   def download_request(client, base_url, url, data, headers) do
     client
     |> new_req(base_url: base_url, headers: headers)
-    |> Req.post!(url: url, body: data)
+    |> request!(url, body: data)
     |> download_response()
   end
 
@@ -155,6 +179,10 @@ defmodule Magpie do
           {:ok, %{path: Path.t(), headers: list() | map()}}
           | {:error, Magpie.Error.t() | File.posix()}
   def download_file_request(client, base_url, url, data, headers, destination) do
+    download_file_request(client, base_url, url, data, headers, destination, [])
+  end
+
+  def download_file_request(client, base_url, url, data, headers, destination, opts) do
     do_download_file_request(
       client,
       base_url,
@@ -162,7 +190,8 @@ defmodule Magpie do
       data,
       headers,
       destination,
-      temporary_download_path(destination)
+      temporary_download_path(destination),
+      opts
     )
   end
 
@@ -173,13 +202,30 @@ defmodule Magpie do
          data,
          headers,
          destination,
-         temporary
+         temporary,
+         opts
        ) do
     try do
       result =
         client
         |> new_req(base_url: base_url, headers: headers)
-        |> Req.post!(url: url, body: data, into: File.stream!(temporary))
+        # Retrying a response already being streamed to a collectable can
+        # duplicate bytes in the temporary file. The higher-level call still
+        # returns transport failures as values and never corrupts destination.
+        |> request!(
+          url,
+          [
+            body: data,
+            into:
+              Magpie.Progress.wrap(
+                File.stream!(temporary),
+                Keyword.get(opts, :progress),
+                Keyword.get(opts, :size),
+                %{direction: :download, path: Keyword.get(opts, :transfer_path)}
+              )
+          ],
+          retry: false
+        )
         |> download_response()
 
       case result do
@@ -213,4 +259,56 @@ defmodule Magpie do
     |> Req.new()
     |> Magpie.Auth.Steps.attach(Magpie.Client.token_provider(client))
   end
+
+  defp request!(req, url, opts, overrides \\ []) do
+    endpoint = normalize_endpoint(url)
+
+    metadata = %{
+      method: :post,
+      endpoint: endpoint,
+      operation: endpoint |> String.trim_leading("/") |> String.replace("/", ".")
+    }
+
+    req = Req.Request.put_private(req, :magpie_telemetry, metadata)
+
+    request_opts =
+      url
+      |> retry_options()
+      |> Keyword.merge(opts)
+      |> Keyword.merge(overrides)
+      |> Keyword.put(:url, url)
+
+    Magpie.Telemetry.span(metadata, fn -> Req.post!(req, request_opts) end)
+  end
+
+  defp retry_options(url) do
+    retry_config = Application.get_env(:magpie, :retry, [])
+
+    cond do
+      retry_config == false ->
+        [retry: false]
+
+      MapSet.member?(@retryable_reads, normalize_endpoint(url)) ->
+        retry_config = if is_list(retry_config), do: retry_config, else: []
+
+        [
+          retry: &Magpie.Telemetry.retry/2,
+          max_retries: Keyword.get(retry_config, :max_retries, 3),
+          retry_log_level: Keyword.get(retry_config, :log_level, :warning)
+        ]
+        |> maybe_put_retry_delay(retry_config)
+
+      true ->
+        [retry: false]
+    end
+  end
+
+  defp maybe_put_retry_delay(opts, config) do
+    case Keyword.fetch(config, :delay) do
+      {:ok, delay} -> Keyword.put(opts, :retry_delay, delay)
+      :error -> opts
+    end
+  end
+
+  defp normalize_endpoint(url), do: "/" <> String.trim_leading(url, "/")
 end

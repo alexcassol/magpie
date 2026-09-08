@@ -1,4 +1,31 @@
-# Upgrading to 0.4
+# Upgrading Magpie
+
+## From 0.5 to 0.6
+
+Magpie 0.6 is additive: existing 0.5 calls keep their signatures and successful
+results. The `Storage` layer now also returns expected Req transport failures as
+`{:error, exception}` instead of raising; bang variants still raise.
+
+New `Storage` capabilities include:
+
+- verified uploads with `verify: true` and `%Magpie.IntegrityError{}`
+- unchanged-file detection with `skip_unchanged: true`
+- conditional writes with `if_rev: rev`
+- transfer `progress: fn transferred, total -> ... end`
+- `copy/4`, `move/4`, `mkdir/3`, `put_many/3` and `delete_many/3`
+- Dropbox request IDs on `%Magpie.Error{}` and request/retry telemetry
+
+Automatic retries apply only to known read-only Dropbox routes. Mutation
+endpoints remain single-attempt because repeating a timed-out write can create
+duplicate effects.
+
+```elixir
+def deps do
+  [{:magpie, "~> 0.6"}]
+end
+```
+
+## From 0.3 to 0.4
 
 Magpie 0.4 decodes the metadata of the `files` endpoints into structs —
 `Magpie.FileMetadata`, `Magpie.FolderMetadata` and `Magpie.DeletedMetadata`

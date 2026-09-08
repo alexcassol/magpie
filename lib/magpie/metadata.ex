@@ -42,8 +42,6 @@ defmodule Magpie.Metadata do
   @type t :: FileMetadata.t() | FolderMetadata.t() | DeletedMetadata.t()
 
   # Dropbox hashes files in 4 MiB blocks.
-  @block_size 4 * 1024 * 1024
-
   @doc """
   Decodes one metadata object.
 
@@ -160,28 +158,10 @@ defmodule Magpie.Metadata do
   def content_hash(data) when is_binary(data), do: content_hash([data])
 
   def content_hash(chunks) do
-    {digests, rest} =
-      Enum.reduce(chunks, {[], <<>>}, fn chunk, {digests, buffer} ->
-        hash_blocks(buffer <> chunk, digests)
-      end)
-
-    # A trailing partial block is hashed on its own; an empty input has no
-    # blocks at all, so its hash is the SHA-256 of nothing.
-    digests = if rest == <<>>, do: digests, else: [sha256(rest) | digests]
-
-    digests
-    |> Enum.reverse()
-    |> IO.iodata_to_binary()
-    |> sha256()
-    |> Base.encode16(case: :lower)
+    chunks
+    |> Enum.reduce(Magpie.ContentHash.new(), &Magpie.ContentHash.update(&2, &1))
+    |> Magpie.ContentHash.finalize()
   end
-
-  defp hash_blocks(<<block::binary-size(@block_size), rest::binary>>, digests),
-    do: hash_blocks(rest, [sha256(block) | digests])
-
-  defp hash_blocks(rest, digests), do: {digests, rest}
-
-  defp sha256(data), do: :crypto.hash(:sha256, data)
 
   @doc false
   # Applies `fun` to the body of a successful response, passing errors through.

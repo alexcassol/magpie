@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-08
+
+Production-ready object storage workflows.
+
+### Added
+
+- `Magpie.Storage.copy/4`, `move/4` and `mkdir/3`, with bang variants
+- concurrent `put_many/3` and `delete_many/3` with stable result order,
+  per-item isolation, timeouts and progress callbacks
+- upload integrity checks with `verify: true`, unchanged-object detection with
+  `skip_unchanged: true`, and `%Magpie.IntegrityError{}`
+- optimistic concurrency through `if_rev: rev`
+- upload/download progress callbacks
+- request `start`, `stop`, `exception` and `retry`, plus transfer progress,
+  Telemetry events
+- Dropbox's `X-Dropbox-Request-Id` on `%Magpie.Error{request_id: ...}`
+
+### Changed
+
+- normal `Magpie.Storage` calls return expected Req transport failures as
+  error tuples; bang variants and lazy streams retain raising semantics
+- known read-only Dropbox POST routes retry transient transport errors, 429s
+  and selected 5xx responses, respecting `Retry-After` and otherwise using
+  exponential backoff with jitter; mutation routes are never retried blindly
+
 ## [0.5.1] - 2026-09-06
 
 Storage reliability and documentation improvements.
@@ -256,7 +281,8 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
-[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/alexcassol/magpie/releases/tag/v0.6.0
 [0.5.1]: https://github.com/alexcassol/magpie/releases/tag/v0.5.1
 [0.5.0]: https://github.com/alexcassol/magpie/releases/tag/v0.5.0
 [0.4.0]: https://github.com/alexcassol/magpie/releases/tag/v0.4.0

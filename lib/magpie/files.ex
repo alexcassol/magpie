@@ -11,6 +11,8 @@ defmodule Magpie.Files do
   import Magpie
   import Magpie.Utils
   alias Magpie.Client
+  alias Magpie.ContentHash
+  alias Magpie.IntegrityError
   alias Magpie.Files.UploadSession
   alias Magpie.Metadata
 
@@ -293,20 +295,28 @@ defmodule Magpie.Files do
 
   """
   def upload_file(client, path, local_path, opts \\ []) do
+    opts = Keyword.put(opts, :transfer_path, path)
     threshold = Keyword.get(opts, :session_threshold, @session_threshold)
 
     case File.stat(local_path) do
       {:ok, %File.Stat{size: size}} when size <= threshold ->
+        opts = Keyword.put(opts, :transfer_size, size)
+
         upload(
           client,
           path,
           local_path,
-          Keyword.get(opts, :mode, "add"),
+          write_mode(opts),
           Keyword.get(opts, :autorename, true),
           Keyword.get(opts, :mute, false)
         )
+        |> notify_upload_progress(opts, size)
+        |> verify_known_hash(path, opts, fn ->
+          Metadata.content_hash(File.stream!(local_path, 65_536))
+        end)
 
-      {:ok, %File.Stat{}} ->
+      {:ok, %File.Stat{size: size}} ->
+        opts = Keyword.put(opts, :transfer_size, size)
         upload_via_session(client, path, File.stream!(local_path, chunk_size(opts)), opts)
 
       {:error, reason} ->
@@ -322,10 +332,15 @@ defmodule Magpie.Files do
   @spec upload_data(Client.t(), binary(), iodata(), keyword()) ::
           {:ok, Magpie.FileMetadata.t()} | {:error, Magpie.Error.t()}
   def upload_data(client, path, data, opts \\ []) do
+    opts = Keyword.put(opts, :transfer_path, path)
     threshold = Keyword.get(opts, :session_threshold, @session_threshold)
+    size = IO.iodata_length(data)
+    opts = Keyword.put(opts, :transfer_size, size)
 
-    if IO.iodata_length(data) <= threshold do
+    if size <= threshold do
       upload_data_once(client, path, data, opts)
+      |> notify_upload_progress(opts, size)
+      |> verify_known_hash(path, opts, fn -> Metadata.content_hash(IO.iodata_to_binary(data)) end)
     else
       upload_via_session(
         client,
@@ -345,6 +360,7 @@ defmodule Magpie.Files do
   @spec upload_stream(Client.t(), binary(), Enumerable.t(), keyword()) ::
           {:ok, Magpie.FileMetadata.t()} | {:error, Magpie.Error.t()}
   def upload_stream(client, path, enumerable, opts \\ []) do
+    opts = Keyword.put(opts, :transfer_path, path)
     upload_via_session(client, path, enumerable, opts)
   end
 
@@ -362,32 +378,47 @@ defmodule Magpie.Files do
   defp upload_via_session(client, path, enumerable, opts) do
     chunk_size = chunk_size(opts)
     commit = commit(path, opts)
+    hash_state = if Keyword.get(opts, :verify, false), do: ContentHash.new(), else: nil
 
     with {:ok, %{"session_id" => session_id}} <- UploadSession.start_data(client, "") do
       enumerable
-      |> Enum.reduce_while({:ok, 0, <<>>}, fn piece, {:ok, offset, buffer} ->
-        data = buffer <> chunk_to_binary(piece)
+      |> Enum.reduce_while({:ok, 0, <<>>, hash_state}, fn piece,
+                                                          {:ok, offset, buffer, hash_state} ->
+        piece = chunk_to_binary(piece)
+        data = buffer <> piece
         {chunks, rest} = split_full_chunks(data, chunk_size)
+        hash_state = update_hash(hash_state, piece)
 
-        case append_chunks(chunks, client, session_id, offset) do
-          {:ok, next_offset} -> {:cont, {:ok, next_offset, rest}}
+        case append_chunks(chunks, client, session_id, offset, opts) do
+          {:ok, next_offset} -> {:cont, {:ok, next_offset, rest, hash_state}}
           {:error, _} = error -> {:halt, error}
         end
       end)
-      |> finish_session(client, session_id, commit)
+      |> finish_session(client, session_id, commit, path, opts)
     end
   end
 
-  defp finish_session({:ok, offset, tail}, client, session_id, commit),
-    do: UploadSession.finish_data(client, session_id, offset, commit, tail)
+  defp finish_session({:ok, offset, tail, hash_state}, client, session_id, commit, path, opts) do
+    result = UploadSession.finish_data(client, session_id, offset, commit, tail)
+    transferred = offset + byte_size(tail)
 
-  defp finish_session(error, _client, _session_id, _commit), do: error
+    result
+    |> notify_upload_progress(opts, transferred)
+    |> verify_hash(path, opts, hash_state)
+  end
 
-  defp append_chunks(chunks, client, session_id, offset) do
+  defp finish_session(error, _client, _session_id, _commit, _path, _opts), do: error
+
+  defp append_chunks(chunks, client, session_id, offset, opts) do
     Enum.reduce_while(chunks, {:ok, offset}, fn chunk, {:ok, current_offset} ->
       case UploadSession.append_data(client, session_id, current_offset, chunk) do
-        {:ok, _} -> {:cont, {:ok, current_offset + byte_size(chunk)}}
-        {:error, _} = error -> {:halt, error}
+        {:ok, _} ->
+          next_offset = current_offset + byte_size(chunk)
+          notify_progress(opts, next_offset)
+          {:cont, {:ok, next_offset}}
+
+        {:error, _} = error ->
+          {:halt, error}
       end
     end)
   end
@@ -422,10 +453,80 @@ defmodule Magpie.Files do
   defp commit(path, opts) do
     %{
       "path" => path,
-      "mode" => Keyword.get(opts, :mode, "add"),
+      "mode" => write_mode(opts),
       "autorename" => Keyword.get(opts, :autorename, true),
       "mute" => Keyword.get(opts, :mute, false)
     }
+  end
+
+  defp write_mode(opts) do
+    case Keyword.fetch(opts, :if_rev) do
+      {:ok, rev} when is_binary(rev) -> %{".tag" => "update", "update" => rev}
+      {:ok, rev} -> raise ArgumentError, ":if_rev must be a revision string, got: #{inspect(rev)}"
+      :error -> Keyword.get(opts, :mode, "add")
+    end
+  end
+
+  defp update_hash(nil, _piece), do: nil
+  defp update_hash(state, piece), do: ContentHash.update(state, piece)
+
+  defp verify_known_hash(result, path, opts, hash_fun) do
+    if Keyword.get(opts, :verify, false) do
+      expected = Keyword.get_lazy(opts, :expected_hash, hash_fun)
+      compare_hash(result, path, expected)
+    else
+      result
+    end
+  end
+
+  defp verify_hash(result, path, opts, hash_state) do
+    if Keyword.get(opts, :verify, false) do
+      expected = Keyword.get(opts, :expected_hash) || ContentHash.finalize(hash_state)
+      compare_hash(result, path, expected)
+    else
+      result
+    end
+  end
+
+  defp compare_hash(
+         {:ok, %Magpie.FileMetadata{content_hash: expected}} = result,
+         _path,
+         expected
+       ),
+       do: result
+
+  defp compare_hash({:ok, %Magpie.FileMetadata{content_hash: actual}}, path, expected),
+    do: {:error, %IntegrityError{path: path, expected: expected, actual: actual}}
+
+  defp compare_hash(result, _path, _expected), do: result
+
+  defp notify_upload_progress({:ok, _} = result, opts, transferred) do
+    notify_progress(opts, transferred)
+    result
+  end
+
+  defp notify_upload_progress(result, _opts, _transferred), do: result
+
+  defp notify_progress(opts, transferred) do
+    total = Keyword.get(opts, :transfer_size)
+
+    :telemetry.execute(
+      [:magpie, :transfer, :progress],
+      %{transferred: transferred, total: total},
+      %{direction: :upload, path: Keyword.get(opts, :transfer_path)}
+    )
+
+    case Keyword.get(opts, :progress) do
+      nil ->
+        :ok
+
+      callback when is_function(callback, 2) ->
+        callback.(transferred, total)
+
+      callback ->
+        raise ArgumentError,
+              ":progress must be a two-argument function, got: #{inspect(callback)}"
+    end
   end
 
   @doc """
@@ -460,12 +561,22 @@ defmodule Magpie.Files do
   Returns `{:ok, %{path: destination, headers: headers}}`, a normalized
   Dropbox API error, or `{:error, posix}` for a local filesystem error.
   """
-  @spec download_file(Client.t(), binary(), Path.t()) ::
+  @spec download_file(Client.t(), binary(), Path.t(), keyword()) ::
           {:ok, %{path: Path.t(), headers: list() | map()}}
           | {:error, Magpie.Error.t() | File.posix()}
-  def download_file(client, path, destination) do
+  def download_file(client, path, destination, opts \\ []) do
     headers = %{"Dropbox-API-Arg" => Jason.encode!(%{"path" => path})}
-    download_file_request(client, upload_url(), "files/download", [], headers, destination)
+    opts = Keyword.put(opts, :transfer_path, path)
+
+    download_file_request(
+      client,
+      upload_url(),
+      "files/download",
+      [],
+      headers,
+      destination,
+      opts
+    )
   end
 
   @doc """

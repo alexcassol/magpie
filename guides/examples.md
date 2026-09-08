@@ -142,7 +142,79 @@ recent_invoices =
   Storage.delete(client, "/Invoices/2026-09.pdf")
 ```
 
-Normal functions return `{:ok, value}` or `{:error, %Magpie.Error{}}`.
+For production uploads, Magpie can verify Dropbox's content hash and avoid
+sending a local file or binary that is already identical:
+
+```elixir
+case Storage.put(client, "/Backup/db.dump", {:file, "priv/db.dump"},
+       verify: true,
+       skip_unchanged: true,
+       progress: fn sent, total -> Logger.info("#{sent}/#{total} bytes") end
+     ) do
+  {:ok, :unchanged, %Magpie.FileMetadata{} = file} -> {:unchanged, file}
+  {:ok, %Magpie.FileMetadata{} = file} -> {:uploaded, file}
+  {:error, error} -> {:failed, error}
+end
+```
+
+Use `if_rev` to replace only the revision your application last read. Dropbox
+returns a conflict if another writer changed the file first:
+
+```elixir
+{:ok, %Magpie.FileMetadata{rev: rev}} = Storage.stat(client, "/state.json")
+
+Storage.put(client, "/state.json", {:binary, Jason.encode!(new_state)},
+  if_rev: rev,
+  verify: true
+)
+```
+
+Common relocation, folder and concurrent batch operations stay in the same
+interface. Batch results preserve input order and isolate failures:
+
+```elixir
+{:ok, %Magpie.FolderMetadata{}} = Storage.mkdir(client, "/Archive")
+{:ok, _} = Storage.copy(client, "/report.pdf", "/Archive/report.pdf")
+{:ok, _} = Storage.move(client, "/draft.pdf", "/Archive/final.pdf")
+
+{:ok, results} =
+  Storage.put_many(
+    client,
+    [
+      {"/Exports/one.json", {:binary, Jason.encode!(one)}},
+      {"/Exports/two.json", {:binary, Jason.encode!(two)}, if_rev: two_rev}
+    ],
+    max_concurrency: 4,
+    verify: true,
+    on_progress: fn key, result -> Logger.debug("#{key}: #{inspect(result)}") end
+  )
+
+for {key, {:error, error}} <- results, do: Logger.warning("#{key}: #{Exception.message(error)}")
+```
+
+Magpie emits `[:magpie, :request, :start | :stop | :exception | :retry]` and
+`[:magpie, :transfer, :progress]` events. Stop metadata includes the HTTP
+status and Dropbox request ID:
+
+```elixir
+defmodule MyApp.MagpieTelemetry do
+  require Logger
+
+  def handle_event([:magpie, :request, event], measurements, metadata, _config) do
+    Logger.debug("Dropbox #{event}: #{metadata.operation} #{inspect(measurements)}")
+  end
+end
+
+:telemetry.attach_many(
+  "my-app-magpie",
+  for(event <- [:stop, :exception, :retry], do: [:magpie, :request, event]),
+  &MyApp.MagpieTelemetry.handle_event/4,
+  nil
+)
+```
+
+Normal functions return success or error tuples; expected Req transport errors
+are values too, so a failed network call does not bring down a background job.
 For one-off scripts, bang variants such as `put!/4`, `get!/3`,
 `download!/4` and `delete!/3` return the value directly and raise on failure.
 Use `Magpie.Files` when you need Dropbox-specific operations beyond this

@@ -9,6 +9,7 @@ defmodule Magpie.Error do
     * `summary` — Dropbox's `error_summary` string when present
       (e.g. `"path/not_found/.."`), `nil` otherwise
     * `body` — the full decoded error payload
+    * `request_id` — Dropbox's request identifier, useful when contacting support
 
   It is also an exception, so it can be raised — `Magpie.Pager` streams do
   exactly that, since a `Stream` cannot return an error tuple
@@ -22,12 +23,13 @@ defmodule Magpie.Error do
 
   """
 
-  defexception [:status, :body, :summary]
+  defexception [:status, :body, :summary, :request_id]
 
   @type t :: %__MODULE__{
           status: pos_integer(),
           body: term(),
-          summary: String.t() | nil
+          summary: String.t() | nil,
+          request_id: String.t() | nil
         }
 
   @doc """
@@ -45,13 +47,31 @@ defmodule Magpie.Error do
       "invalid_grant"
 
   """
-  def new(status, %{"error_summary" => summary} = body),
-    do: %__MODULE__{status: status, body: body, summary: summary}
+  def new(status, body, headers \\ [])
 
-  def new(status, %{"error" => summary} = body) when is_binary(summary),
-    do: %__MODULE__{status: status, body: body, summary: summary}
+  def new(status, %{"error_summary" => summary} = body, headers),
+    do: %__MODULE__{
+      status: status,
+      body: body,
+      summary: summary,
+      request_id: request_id(headers)
+    }
 
-  def new(status, body), do: %__MODULE__{status: status, body: body, summary: nil}
+  def new(status, %{"error" => summary} = body, headers) when is_binary(summary),
+    do: %__MODULE__{
+      status: status,
+      body: body,
+      summary: summary,
+      request_id: request_id(headers)
+    }
+
+  def new(status, body, headers),
+    do: %__MODULE__{status: status, body: body, summary: nil, request_id: request_id(headers)}
+
+  @doc "Returns whether an error represents a content integrity mismatch."
+  @spec integrity?(term()) :: boolean()
+  def integrity?(%Magpie.IntegrityError{}), do: true
+  def integrity?(_), do: false
 
   @doc "Returns whether Dropbox reported that the requested resource was not found."
   @spec not_found?(term()) :: boolean()
@@ -105,6 +125,21 @@ defmodule Magpie.Error do
     do: tag in String.split(summary, "/", trim: true)
 
   defp summary_has_segment?(_summary, _tag), do: false
+
+  defp request_id(headers) when is_map(headers),
+    do: headers |> Map.get("x-dropbox-request-id", []) |> List.wrap() |> List.first()
+
+  defp request_id(headers) when is_list(headers) do
+    headers
+    |> Enum.find_value(fn
+      {key, value} when key in ["x-dropbox-request-id", "X-Dropbox-Request-Id"] -> value
+      _ -> nil
+    end)
+    |> List.wrap()
+    |> List.first()
+  end
+
+  defp request_id(_), do: nil
 
   @impl true
   def message(%__MODULE__{status: status, summary: nil, body: body}),

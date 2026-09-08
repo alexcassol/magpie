@@ -15,13 +15,13 @@ Like the bird, Magpie collects and stashes your things — in your Dropbox.
 ```elixir
 def deps do
   [
-    {:magpie, "~> 0.5"}
+    {:magpie, "~> 0.6"}
   ]
 end
 ```
 
-No configuration is required. Endpoint URLs and extra `Req` options can be
-set with `config :magpie, ...` — see the `Magpie` module docs.
+No configuration is required. Endpoint URLs, retry controls and extra `Req`
+options can be set with `config :magpie, ...` — see the `Magpie` module docs.
 
 ## Quick start
 
@@ -41,7 +41,7 @@ client = Magpie.Client.new("DROPBOX_ACCESS_TOKEN")
 alias Magpie.Storage
 
 {:ok, %Magpie.FileMetadata{size: size}} =
-  Storage.put(client, "/Backup/report.pdf", {:file, "priv/report.pdf"})
+  Storage.put(client, "/Backup/report.pdf", {:file, "priv/report.pdf"}, verify: true)
 
 {:ok, contents} = Storage.get(client, "/Backup/report.pdf")
 {:ok, url} = Storage.url(client, "/Backup/report.pdf")
@@ -51,9 +51,11 @@ alias Magpie.Storage
   Storage.download(client, "/Backup/report.pdf", "tmp/report.pdf", mkdir_p: true)
 ```
 
-Every call returns `{:ok, result}` on success or `{:error, %Magpie.Error{}}`
-on API errors — with the HTTP `status`, Dropbox's `error_summary` and the
-full error `body`. Files, folders and deleted entries come back as
+Every call returns `{:ok, result}` on success or an error tuple. Dropbox API
+errors are `%Magpie.Error{}` values with the HTTP `status`, Dropbox's
+`error_summary`, full `body` and `request_id`; expected transport failures are
+also returned instead of raising from normal `Storage` calls. Files, folders
+and deleted entries come back as
 `Magpie.FileMetadata`, `Magpie.FolderMetadata` and `Magpie.DeletedMetadata`
 structs:
 
@@ -66,10 +68,15 @@ end
 ## Features
 
 - **Simple storage API** — `Magpie.Storage` covers the common path with
-  `put`, `get`, `download`, `delete`, `exists?`, `stat`, `list`, `stream`
-  and temporary URLs. Upload a local file, binary/iodata or arbitrary stream;
-  large transfers automatically use Dropbox upload sessions and downloads
-  stream atomically to disk.
+  `put`, `get`, `download`, `delete`, `copy`, `move`, `mkdir`, `exists?`,
+  `stat`, `list`, `stream`, concurrent batches and temporary URLs. Upload a
+  local file, binary/iodata or arbitrary stream; verify content, skip unchanged
+  objects, protect writes with `if_rev`, observe transfer progress, and stream
+  large downloads atomically to disk.
+- **Production reliability** — semantically safe Dropbox reads retry 429 and
+  transient 5xx/transport failures with `Retry-After` or exponential backoff;
+  mutating calls are never retried blindly. Telemetry covers request start,
+  stop, exception and retry events.
 - **Complete coverage** — all current user-scoped routes of the Dropbox API
   v2 (`files`, `sharing`, `file_properties`, `file_requests`, `users`,
   `account`, `auth`, `check`, `contacts`, `openid`), verified against the
@@ -107,8 +114,8 @@ the guides:
   persisting tokens and custom providers
 - [Phoenix & LiveView uploads](https://magpie.hexdocs.pm/phoenix.html) —
   controllers, `UploadWriter`, direct browser → Dropbox uploads
-- [Upgrading to 0.4](https://magpie.hexdocs.pm/upgrading.html) — every call
-  whose result changed with typed metadata, with 0.3 and 0.4 side by side
+- [Upgrading](https://magpie.hexdocs.pm/upgrading.html) — 0.6 additions and
+  every 0.4 call whose result changed with typed metadata
 
 ## Development
 

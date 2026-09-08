@@ -29,31 +29,53 @@ defmodule Magpie.Storage do
   alias Magpie.Error
   alias Magpie.Files
   alias Magpie.Files.ListFolder
+  alias Magpie.Metadata
 
   @type source :: {:file, Path.t()} | {:binary, iodata()} | {:stream, Enumerable.t()}
-  @type result(value) :: {:ok, value} | {:error, Error.t() | File.posix()}
+  @type result(value) :: {:ok, value} | {:error, Exception.t() | File.posix()}
+
+  @batch_options [:max_concurrency, :timeout, :on_progress]
 
   @doc """
   Uploads a file, binary/iodata value, or stream to `key`.
 
-  Options are `:mode`, `:autorename`, `:mute`, `:chunk_size` and
-  `:session_threshold`; they have the same defaults as
-  `Magpie.Files.upload_file/4`.
+  Options are `:mode`, `:if_rev`, `:autorename`, `:mute`, `:chunk_size`,
+  `:session_threshold`, `:verify`, `:skip_unchanged` and `:progress`.
+  `:if_rev` performs a conditional update, `:verify` compares Dropbox's
+  content hash after upload, and `:skip_unchanged` avoids uploading matching
+  file/binary sources. Progress callbacks receive `(transferred, total)`;
+  `total` can be `nil` for streams.
   """
   @spec put(Magpie.Client.t(), binary(), source(), keyword()) ::
           result(Magpie.FileMetadata.t())
-  def put(client, key, source, opts \\ [])
+          | {:ok, :unchanged, Magpie.FileMetadata.t()}
+  def put(client, key, source, opts \\ []) do
+    validate_progress!(opts)
+    safely(fn -> do_put(client, key, source, opts) end)
+  end
 
-  def put(client, key, {:file, path}, opts),
-    do: Files.upload_file(client, key, path, opts)
+  defp do_put(client, key, {:file, path} = source, opts) do
+    put_with_hash(client, key, source, opts, fn ->
+      Metadata.content_hash(File.stream!(path, 65_536))
+    end)
+  end
 
-  def put(client, key, {:binary, data}, opts),
-    do: Files.upload_data(client, key, data, opts)
+  defp do_put(client, key, {:binary, data} = source, opts) do
+    put_with_hash(client, key, source, opts, fn ->
+      data |> IO.iodata_to_binary() |> Metadata.content_hash()
+    end)
+  end
 
-  def put(client, key, {:stream, enumerable}, opts),
-    do: Files.upload_stream(client, key, enumerable, opts)
+  defp do_put(client, key, {:stream, enumerable}, opts) do
+    if Keyword.get(opts, :skip_unchanged, false) do
+      raise ArgumentError,
+            ":skip_unchanged is not supported for streams because they cannot be read twice"
+    end
 
-  def put(_client, _key, source, _opts) do
+    Files.upload_stream(client, key, enumerable, opts)
+  end
+
+  defp do_put(_client, _key, source, _opts) do
     raise ArgumentError,
           "expected source to be {:file, path}, {:binary, iodata}, or {:stream, enumerable}, got: #{inspect(source)}"
   end
@@ -69,13 +91,15 @@ defmodule Magpie.Storage do
   """
   @spec get(Magpie.Client.t(), binary(), keyword()) :: result(binary() | map())
   def get(client, key, opts \\ []) do
-    case Files.download(client, key) do
-      {:ok, %{body: body} = response} ->
-        if Keyword.get(opts, :with_headers, false), do: {:ok, response}, else: {:ok, body}
+    safely(fn ->
+      case Files.download(client, key) do
+        {:ok, %{body: body} = response} ->
+          if Keyword.get(opts, :with_headers, false), do: {:ok, response}, else: {:ok, body}
 
-      {:error, _} = error ->
-        error
-    end
+        {:error, _} = error ->
+          error
+      end
+    end)
   end
 
   @doc "Like `get/3`, but returns the bytes directly and raises on failure."
@@ -90,10 +114,14 @@ defmodule Magpie.Storage do
   """
   @spec download(Magpie.Client.t(), binary(), Path.t(), keyword()) :: result(Path.t())
   def download(client, key, destination, opts \\ []) do
-    with :ok <- maybe_create_parent(destination, opts),
-         {:ok, %{path: path}} <- Files.download_file(client, key, destination) do
-      {:ok, path}
-    end
+    validate_progress!(opts)
+
+    safely(fn ->
+      with :ok <- maybe_create_parent(destination, opts),
+           {:ok, %{path: path}} <- Files.download_file(client, key, destination, opts) do
+        {:ok, path}
+      end
+    end)
   end
 
   @doc "Like `download/4`, but returns the destination directly and raises on failure."
@@ -102,30 +130,33 @@ defmodule Magpie.Storage do
 
   @doc "Deletes a Dropbox file or folder and returns its final metadata."
   def delete(client, key, opts \\ []) do
-    Files.delete_folder(client, key, option_map(opts, [:parent_rev]))
+    safely(fn -> Files.delete_folder(client, key, option_map(opts, [:parent_rev])) end)
   end
 
   @doc "Like `delete/3`, but returns metadata directly and raises on failure."
   def delete!(client, key, opts \\ []), do: delete(client, key, opts) |> unwrap!()
 
   @doc "Returns `true`, `false` for a missing key, or an error tuple for other failures."
-  @spec exists?(Magpie.Client.t(), binary(), keyword()) :: boolean() | {:error, Error.t()}
+  @spec exists?(Magpie.Client.t(), binary(), keyword()) :: boolean() | {:error, Exception.t()}
   def exists?(client, key, opts \\ []) do
     case stat(client, key, opts) do
       {:ok, _metadata} -> true
       {:error, %Error{} = error} -> if Error.not_found?(error), do: false, else: {:error, error}
+      {:error, _} = error -> error
     end
   end
 
   @doc "Returns typed Dropbox metadata for `key`."
   def stat(client, key, opts \\ []) do
-    Files.get_metadata(
-      client,
-      key,
-      Keyword.get(opts, :include_media_info, false),
-      Keyword.get(opts, :include_deleted, false),
-      Keyword.get(opts, :include_has_explicit_shared_members, false)
-    )
+    safely(fn ->
+      Files.get_metadata(
+        client,
+        key,
+        Keyword.get(opts, :include_media_info, false),
+        Keyword.get(opts, :include_deleted, false),
+        Keyword.get(opts, :include_has_explicit_shared_members, false)
+      )
+    end)
   end
 
   @doc "Like `stat/3`, but returns metadata directly and raises on failure."
@@ -141,9 +172,7 @@ defmodule Magpie.Storage do
   @spec list(Magpie.Client.t(), binary(), keyword()) ::
           {:ok, [Magpie.Metadata.t()]} | {:error, Exception.t()}
   def list(client, prefix \\ "", opts \\ []) do
-    {:ok, client |> stream(prefix, opts) |> Enum.to_list()}
-  rescue
-    error in [Error, Req.TransportError, Req.HTTPError] -> {:error, error}
+    safely(fn -> {:ok, client |> stream(prefix, opts) |> Enum.to_list()} end)
   end
 
   @doc "Like `list/3`, but returns entries directly and raises on failure."
@@ -158,9 +187,11 @@ defmodule Magpie.Storage do
   @doc "Returns a temporary direct-download URL for `key`."
   @spec url(Magpie.Client.t(), binary(), keyword()) :: {:ok, binary()} | {:error, Error.t()}
   def url(client, key, _opts \\ []) do
-    client
-    |> Files.get_temporary_link(key)
-    |> link_result()
+    safely(fn ->
+      client
+      |> Files.get_temporary_link(key)
+      |> link_result()
+    end)
   end
 
   @doc "Like `url/3`, but returns the URL directly and raises on failure."
@@ -174,18 +205,205 @@ defmodule Magpie.Storage do
 
     commit = %{
       "path" => key,
-      "mode" => Keyword.get(opts, :mode, "add"),
+      "mode" => write_mode(opts),
       "autorename" => Keyword.get(opts, :autorename, true),
       "mute" => Keyword.get(opts, :mute, false)
     }
 
-    client
-    |> Files.get_temporary_upload_link(commit, duration)
-    |> link_result()
+    safely(fn ->
+      client
+      |> Files.get_temporary_upload_link(commit, duration)
+      |> link_result()
+    end)
   end
 
   @doc "Like `upload_url/3`, but returns the URL directly and raises on failure."
   def upload_url!(client, key, opts \\ []), do: upload_url(client, key, opts) |> unwrap!()
+
+  @doc "Copies a Dropbox file or folder to `destination`."
+  def copy(client, source, destination, _opts \\ []) do
+    safely(fn -> Files.copy(client, source, destination) end)
+  end
+
+  @doc "Like `copy/4`, but returns metadata directly and raises on failure."
+  def copy!(client, source, destination, opts \\ []),
+    do: copy(client, source, destination, opts) |> unwrap!()
+
+  @doc "Moves a Dropbox file or folder to `destination`."
+  def move(client, source, destination, _opts \\ []) do
+    safely(fn -> Files.move(client, source, destination) end)
+  end
+
+  @doc "Like `move/4`, but returns metadata directly and raises on failure."
+  def move!(client, source, destination, opts \\ []),
+    do: move(client, source, destination, opts) |> unwrap!()
+
+  @doc "Creates a Dropbox folder at `key`."
+  def mkdir(client, key, _opts \\ []) do
+    safely(fn -> Files.create_folder(client, key) end)
+  end
+
+  @doc "Like `mkdir/3`, but returns metadata directly and raises on failure."
+  def mkdir!(client, key, opts \\ []), do: mkdir(client, key, opts) |> unwrap!()
+
+  @doc """
+  Uploads several `{key, source}` or `{key, source, options}` entries concurrently.
+
+  Results keep input order and each item is isolated as `{key, result}`. Batch
+  options are `:max_concurrency`, `:timeout` and a two-argument
+  `:on_progress` callback receiving `(key, result)`; remaining options are
+  passed to every upload.
+  """
+  def put_many(client, entries, opts \\ []) when is_list(entries) do
+    common_opts = Keyword.drop(opts, @batch_options)
+
+    batch(entries, opts, :put, fn entry ->
+      {key, source, item_opts} = put_entry(entry)
+      {key, put(client, key, source, Keyword.merge(common_opts, item_opts))}
+    end)
+  end
+
+  @doc """
+  Deletes several keys concurrently while preserving input order and isolating failures.
+
+  Accepts the same batch options as `put_many/3`; remaining options are
+  passed to every deletion.
+  """
+  def delete_many(client, keys, opts \\ []) when is_list(keys) do
+    delete_opts = Keyword.drop(opts, @batch_options)
+    batch(keys, opts, :delete, fn key -> {key, delete(client, key, delete_opts)} end)
+  end
+
+  defp put_with_hash(client, key, source, opts, hash_fun) do
+    needs_hash = Keyword.get(opts, :verify, false) or Keyword.get(opts, :skip_unchanged, false)
+    expected_hash = if needs_hash, do: hash_fun.()
+
+    case maybe_unchanged(client, key, expected_hash, opts) do
+      {:unchanged, metadata} ->
+        {:ok, :unchanged, metadata}
+
+      :upload ->
+        opts =
+          if Keyword.get(opts, :verify, false),
+            do: Keyword.put(opts, :expected_hash, expected_hash),
+            else: opts
+
+        upload_source(client, key, source, opts)
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp maybe_unchanged(client, key, hash, opts) do
+    if Keyword.get(opts, :skip_unchanged, false) do
+      case Files.get_metadata(client, key) do
+        {:ok, %Magpie.FileMetadata{content_hash: ^hash} = metadata} ->
+          {:unchanged, metadata}
+
+        {:ok, _metadata} ->
+          :upload
+
+        {:error, %Error{} = error} ->
+          if Error.not_found?(error), do: :upload, else: {:error, error}
+      end
+    else
+      :upload
+    end
+  end
+
+  defp upload_source(client, key, {:file, path}, opts),
+    do: Files.upload_file(client, key, path, opts)
+
+  defp upload_source(client, key, {:binary, data}, opts),
+    do: Files.upload_data(client, key, data, opts)
+
+  defp put_entry({key, source}), do: {key, source, []}
+  defp put_entry({key, source, opts}) when is_list(opts), do: {key, source, opts}
+
+  defp put_entry(entry) do
+    raise ArgumentError,
+          "expected a batch entry to be {key, source} or {key, source, options}, got: #{inspect(entry)}"
+  end
+
+  defp batch(items, opts, operation, fun) do
+    task_opts = [
+      ordered: true,
+      max_concurrency: Keyword.get(opts, :max_concurrency, System.schedulers_online()),
+      timeout: Keyword.get(opts, :timeout, :infinity),
+      on_timeout: :kill_task
+    ]
+
+    callback = progress_callback(opts)
+
+    results =
+      items
+      |> Task.async_stream(fn item -> isolated(fun, item) end, task_opts)
+      |> Enum.zip(items)
+      |> Enum.map(fn {task_result, item} ->
+        {key, result} = batch_result(task_result, operation, batch_key(item))
+        if callback, do: callback.(key, result)
+        {key, result}
+      end)
+
+    {:ok, results}
+  end
+
+  defp isolated(fun, item) do
+    fun.(item)
+  rescue
+    error -> {batch_key(item), {:error, error}}
+  catch
+    kind, reason ->
+      {batch_key(item),
+       {:error,
+        %Magpie.BatchError{operation: :worker, key: batch_key(item), reason: {kind, reason}}}}
+  end
+
+  defp batch_result({:ok, {key, result}}, _operation, _fallback_key), do: {key, result}
+
+  defp batch_result({:exit, reason}, operation, key),
+    do: {key, {:error, %Magpie.BatchError{operation: operation, key: key, reason: reason}}}
+
+  defp batch_key({key, _source}), do: key
+  defp batch_key({key, _source, _opts}), do: key
+  defp batch_key(key), do: key
+
+  defp progress_callback(opts) do
+    case Keyword.get(opts, :on_progress) do
+      nil ->
+        nil
+
+      callback when is_function(callback, 2) ->
+        callback
+
+      callback ->
+        raise ArgumentError,
+              ":on_progress must be a two-argument function, got: #{inspect(callback)}"
+    end
+  end
+
+  defp validate_progress!(opts) do
+    case Keyword.get(opts, :progress) do
+      nil ->
+        :ok
+
+      callback when is_function(callback, 2) ->
+        :ok
+
+      callback ->
+        raise ArgumentError,
+              ":progress must be a two-argument function, got: #{inspect(callback)}"
+    end
+  end
+
+  defp write_mode(opts) do
+    case Keyword.fetch(opts, :if_rev) do
+      {:ok, rev} when is_binary(rev) -> %{".tag" => "update", "update" => rev}
+      {:ok, rev} -> raise ArgumentError, ":if_rev must be a revision string, got: #{inspect(rev)}"
+      :error -> Keyword.get(opts, :mode, "add")
+    end
+  end
 
   defp link_result({:ok, %{"link" => link}}), do: {:ok, link}
   defp link_result({:error, _} = error), do: error
@@ -208,6 +426,13 @@ defmodule Magpie.Storage do
     |> option_map()
   end
 
+  defp safely(fun) do
+    fun.()
+  rescue
+    error in [Req.TransportError, Req.HTTPError, File.Error] -> {:error, error}
+  end
+
+  defp unwrap!({:ok, :unchanged, value}), do: {:unchanged, value}
   defp unwrap!({:ok, value}), do: value
   defp unwrap!({:error, error}) when is_exception(error), do: raise(error)
   defp unwrap!({:error, reason}), do: raise("Magpie storage operation failed: #{inspect(reason)}")
