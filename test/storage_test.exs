@@ -282,6 +282,22 @@ defmodule Magpie.StorageTest do
       assert_raise Req.TransportError, fn -> Storage.list!(@client, "/scanner") end
     end
 
+    test "list returns Dropbox API errors instead of crashing the caller" do
+      Req.Test.stub(Magpie, fn conn ->
+        conn
+        |> Plug.Conn.put_status(409)
+        |> Req.Test.json(%{
+          "error_summary" => "path/not_found/..",
+          "error" => %{".tag" => "path", "path" => %{".tag" => "not_found"}}
+        })
+      end)
+
+      assert {:error, %Error{status: 409} = error} = Storage.list(@client, "/missing")
+      assert Error.not_found?(error)
+
+      assert_raise Error, fn -> Storage.list!(@client, "/missing") end
+    end
+
     test "root list and stream defaults return typed entries" do
       Req.Test.stub(Magpie, fn conn ->
         assert conn.body_params["path"] == ""

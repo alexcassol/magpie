@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-08
+
+### Fixed
+
+- `Magpie.Storage.list/3` returns Dropbox API errors raised while paginating
+  as `{:error, %Magpie.Error{}}` again, as 0.5.1 did, instead of letting
+  them escape to the caller
+
 ## [0.6.0] - 2026-09-08
 
 Production-ready object storage workflows.
@@ -281,7 +289,8 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
-[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/alexcassol/magpie/releases/tag/v0.6.1
 [0.6.0]: https://github.com/alexcassol/magpie/releases/tag/v0.6.0
 [0.5.1]: https://github.com/alexcassol/magpie/releases/tag/v0.5.1
 [0.5.0]: https://github.com/alexcassol/magpie/releases/tag/v0.5.0

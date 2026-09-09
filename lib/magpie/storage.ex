@@ -429,7 +429,7 @@ defmodule Magpie.Storage do
   defp safely(fun) do
     fun.()
   rescue
-    error in [Req.TransportError, Req.HTTPError, File.Error] -> {:error, error}
+    error in [Error, Req.TransportError, Req.HTTPError, File.Error] -> {:error, error}
   end
 
   defp unwrap!({:ok, :unchanged, value}), do: {:unchanged, value}
