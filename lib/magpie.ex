@@ -22,7 +22,8 @@ defmodule Magpie do
   Extra options merged into every request (e.g. `plug: {Req.Test, Magpie}`
   for testing) can be set with `config :magpie, req_options: [...]`.
 
-  Known read-only Dropbox routes retry transient failures by default. Tune
+  Selected read-only file routes — downloads, metadata, temporary links,
+  listings, revisions and search — retry transient failures by default. Tune
   the maximum attempts, log level, or delay controller with:
 
       config :magpie,

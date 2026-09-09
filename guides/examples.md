@@ -189,12 +189,16 @@ interface. Batch results preserve input order and isolate failures:
     on_progress: fn key, result -> Logger.debug("#{key}: #{inspect(result)}") end
   )
 
-for {key, {:error, error}} <- results, do: Logger.warning("#{key}: #{Exception.message(error)}")
+for {key, {:error, error}} <- results do
+  message = if is_exception(error), do: Exception.message(error), else: inspect(error)
+  Logger.warning("#{key}: #{message}")
+end
 ```
 
 Magpie emits `[:magpie, :request, :start | :stop | :exception | :retry]` and
 `[:magpie, :transfer, :progress]` events. Stop metadata includes the HTTP
-status and Dropbox request ID:
+status and Dropbox request ID. This example observes completed, failed and
+retried requests, plus transfer progress:
 
 ```elixir
 defmodule MyApp.MagpieTelemetry do
@@ -203,11 +207,23 @@ defmodule MyApp.MagpieTelemetry do
   def handle_event([:magpie, :request, event], measurements, metadata, _config) do
     Logger.debug("Dropbox #{event}: #{metadata.operation} #{inspect(measurements)}")
   end
+
+  def handle_event(
+        [:magpie, :transfer, :progress],
+        %{transferred: transferred, total: total},
+        %{direction: direction, path: path},
+        _config
+      ) do
+    Logger.debug("Dropbox #{direction} #{path}: #{transferred}/#{inspect(total)} bytes")
+  end
 end
+
+request_events =
+  for event <- [:stop, :exception, :retry], do: [:magpie, :request, event]
 
 :telemetry.attach_many(
   "my-app-magpie",
-  for(event <- [:stop, :exception, :retry], do: [:magpie, :request, event]),
+  request_events ++ [[:magpie, :transfer, :progress]],
   &MyApp.MagpieTelemetry.handle_event/4,
   nil
 )
@@ -215,10 +231,11 @@ end
 
 Normal functions return success or error tuples; expected Req transport errors
 are values too, so a failed network call does not bring down a background job.
-For one-off scripts, bang variants such as `put!/4`, `get!/3`,
-`download!/4` and `delete!/3` return the value directly and raise on failure.
-Use `Magpie.Files` when you need Dropbox-specific operations beyond this
-storage interface.
+For one-off scripts, bang variants such as `get!/3`, `download!/4` and
+`delete!/3` return the value directly and raise on failure. `put!/4` does the
+same after an upload, or returns `{:unchanged, metadata}` when
+`skip_unchanged: true` avoids the upload. Use `Magpie.Files` when you need
+Dropbox-specific operations beyond this storage interface.
 
 ## Uploading files
 

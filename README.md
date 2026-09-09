@@ -15,7 +15,7 @@ Like the bird, Magpie collects and stashes your things — in your Dropbox.
 ```elixir
 def deps do
   [
-    {:magpie, "~> 0.6"}
+    {:magpie, "~> 0.6.1"}
   ]
 end
 ```
@@ -73,10 +73,11 @@ end
   local file, binary/iodata or arbitrary stream; verify content, skip unchanged
   objects, protect writes with `if_rev`, observe transfer progress, and stream
   large downloads atomically to disk.
-- **Production reliability** — semantically safe Dropbox reads retry 429 and
+- **Production reliability** — selected Dropbox file reads (`download`,
+  metadata, temporary links, listings, revisions and search) retry 429 and
   transient 5xx/transport failures with `Retry-After` or exponential backoff;
   mutating calls are never retried blindly. Telemetry covers request start,
-  stop, exception and retry events.
+  stop, exception and retry events, plus transfer progress.
 - **Complete coverage** — all current user-scoped routes of the Dropbox API
   v2 (`files`, `sharing`, `file_properties`, `file_requests`, `users`,
   `account`, `auth`, `check`, `contacts`, `openid`), verified against the

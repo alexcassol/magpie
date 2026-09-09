@@ -8,7 +8,9 @@ defmodule Magpie.Telemetry do
     * `[:magpie, :request, :stop]`
     * `[:magpie, :request, :exception]` when the request raises
     * `[:magpie, :request, :retry]` before an automatic retry
-    * `[:magpie, :transfer, :progress]` while bytes are uploaded/downloaded
+
+  Uploads and streaming downloads also emit
+  `[:magpie, :transfer, :progress]` while bytes are transferred.
 
   Request metadata includes `:method`, `:endpoint` and `:operation`. Stop
   metadata also includes `:status` and Dropbox's `:request_id` when present.

@@ -80,7 +80,12 @@ defmodule Magpie.Storage do
           "expected source to be {:file, path}, {:binary, iodata}, or {:stream, enumerable}, got: #{inspect(source)}"
   end
 
-  @doc "Like `put/4`, but returns metadata directly and raises on failure."
+  @doc """
+  Like `put/4`, but raises on failure.
+
+  Returns metadata directly after an upload, or `{:unchanged, metadata}` when
+  `skip_unchanged: true` finds identical remote content.
+  """
   def put!(client, key, source, opts \\ []), do: put(client, key, source, opts) |> unwrap!()
 
   @doc """
@@ -110,7 +115,9 @@ defmodule Magpie.Storage do
 
   The destination's parent must exist unless `mkdir_p: true` is passed.
   An existing destination is replaced only after Dropbox successfully sends
-  the complete response.
+  the complete response. A `:progress` callback receives
+  `(transferred, total)` as bytes arrive; pass the expected byte count as
+  `:size` when it is known, otherwise `total` is `nil`.
   """
   @spec download(Magpie.Client.t(), binary(), Path.t(), keyword()) :: result(Path.t())
   def download(client, key, destination, opts \\ []) do
@@ -185,7 +192,8 @@ defmodule Magpie.Storage do
   end
 
   @doc "Returns a temporary direct-download URL for `key`."
-  @spec url(Magpie.Client.t(), binary(), keyword()) :: {:ok, binary()} | {:error, Error.t()}
+  @spec url(Magpie.Client.t(), binary(), keyword()) ::
+          {:ok, binary()} | {:error, Exception.t()}
   def url(client, key, _opts \\ []) do
     safely(fn ->
       client
@@ -199,7 +207,7 @@ defmodule Magpie.Storage do
 
   @doc "Returns a one-use direct-upload URL for `key`."
   @spec upload_url(Magpie.Client.t(), binary(), keyword()) ::
-          {:ok, binary()} | {:error, Error.t()}
+          {:ok, binary()} | {:error, Exception.t()}
   def upload_url(client, key, opts \\ []) do
     duration = Keyword.get(opts, :duration, 14_400)
 

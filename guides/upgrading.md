@@ -15,13 +15,18 @@ New `Storage` capabilities include:
 - `copy/4`, `move/4`, `mkdir/3`, `put_many/3` and `delete_many/3`
 - Dropbox request IDs on `%Magpie.Error{}` and request/retry telemetry
 
-Automatic retries apply only to known read-only Dropbox routes. Mutation
-endpoints remain single-attempt because repeating a timed-out write can create
-duplicate effects.
+Automatic retries apply only to selected read-only file routes: downloads,
+metadata, temporary links, listings, revisions and search. Mutation endpoints
+remain single-attempt because repeating a timed-out write can create duplicate
+effects.
+
+Use 0.6.1 or newer. Version 0.6.1 fixes a regression in 0.6.0 that allowed
+Dropbox API errors raised during `Storage.list/3` pagination to escape instead
+of returning `{:error, %Magpie.Error{}}`.
 
 ```elixir
 def deps do
-  [{:magpie, "~> 0.6"}]
+  [{:magpie, "~> 0.6.1"}]
 end
 ```
 

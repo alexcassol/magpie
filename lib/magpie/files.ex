@@ -285,8 +285,11 @@ defmodule Magpie.Files do
     * `:session_threshold` — size above which an upload session is used
       (default 150 MiB, the Dropbox limit for single-request uploads)
     * `:mode` — `"add"` (default) or `"overwrite"`
+    * `:if_rev` — replace only the supplied Dropbox revision
     * `:autorename` — default `true`
     * `:mute` — default `false`
+    * `:verify` — compare the returned Dropbox content hash with the local file
+    * `:progress` — a callback receiving `(transferred, total)` byte counts
 
   ## Example
 
@@ -328,9 +331,14 @@ defmodule Magpie.Files do
   Uploads binary or iodata content, selecting a single request or an upload
   session from its byte size. For an enumerable whose size is not known in
   advance, use `upload_stream/4`.
+
+  Accepts the same chunking, write, verification and progress options as
+  `upload_file/4`. The progress callback always receives the content byte size
+  as its `total` value.
   """
   @spec upload_data(Client.t(), binary(), iodata(), keyword()) ::
-          {:ok, Magpie.FileMetadata.t()} | {:error, Magpie.Error.t()}
+          {:ok, Magpie.FileMetadata.t()}
+          | {:error, Magpie.Error.t() | Magpie.IntegrityError.t()}
   def upload_data(client, path, data, opts \\ []) do
     opts = Keyword.put(opts, :transfer_path, path)
     threshold = Keyword.get(opts, :session_threshold, @session_threshold)
@@ -356,9 +364,14 @@ defmodule Magpie.Files do
   session. Chunks from the enumerable may have any size; Magpie buffers at
   most one configured upload chunk and sends the final partial chunk with
   the commit request.
+
+  Options include `:chunk_size`, `:mode`, `:if_rev`, `:autorename`, `:mute`,
+  `:verify` and `:progress`. Progress callbacks receive
+  `(transferred, nil)` because an arbitrary enumerable has no known total.
   """
   @spec upload_stream(Client.t(), binary(), Enumerable.t(), keyword()) ::
-          {:ok, Magpie.FileMetadata.t()} | {:error, Magpie.Error.t()}
+          {:ok, Magpie.FileMetadata.t()}
+          | {:error, Magpie.Error.t() | Magpie.IntegrityError.t()}
   def upload_stream(client, path, enumerable, opts \\ []) do
     opts = Keyword.put(opts, :transfer_path, path)
     upload_via_session(client, path, enumerable, opts)
@@ -560,6 +573,8 @@ defmodule Magpie.Files do
 
   Returns `{:ok, %{path: destination, headers: headers}}`, a normalized
   Dropbox API error, or `{:error, posix}` for a local filesystem error.
+  A `:progress` callback receives `(transferred, total)` byte counts; use
+  `:size` to supply the expected total when known.
   """
   @spec download_file(Client.t(), binary(), Path.t(), keyword()) ::
           {:ok, %{path: Path.t(), headers: list() | map()}}

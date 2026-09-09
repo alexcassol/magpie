@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-09-08
+
+### Documentation
+
+- require 0.6.1 or newer in installation examples and document the 0.6.0
+  `Storage.list/3` regression
+- correct batch and bang-variant examples, including non-exception batch errors
+- document retry scope, transfer telemetry and upload/download progress options
+- align public types with integrity and transport errors
+
 ## [0.6.1] - 2026-09-08
 
 ### Fixed
@@ -289,7 +299,8 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
-[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/alexcassol/magpie/releases/tag/v0.6.2
 [0.6.1]: https://github.com/alexcassol/magpie/releases/tag/v0.6.1
 [0.6.0]: https://github.com/alexcassol/magpie/releases/tag/v0.6.0
 [0.5.1]: https://github.com/alexcassol/magpie/releases/tag/v0.5.1
