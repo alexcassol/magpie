@@ -1,5 +1,21 @@
 # Upgrading Magpie
 
+## From 0.6.0–0.6.2 to 0.6.3
+
+This patch hides credentials in client/token inspection and token server status
+reports. Credential fields remain available through explicit access; inspection
+is not a substitute for secure storage, and converting structs to raw maps can
+still expose their contents. Refresh callback failures log the exception type
+without the potentially sensitive exception message.
+
+`if_rev` now always performs the conditional upload, including when combined
+with `skip_unchanged: true`. This prevents a metadata lookup from bypassing
+the revision precondition, at the cost of uploading identical content in this
+combination. The default write mode remains `add` with automatic renaming.
+
+Upload failures remain intact when verification is enabled, and pagination
+preserves exceptions returned by page callbacks. No API migration is required.
+
 ## From 0.5 to 0.6
 
 Magpie 0.6 is additive: existing 0.5 calls keep their signatures and successful
@@ -20,13 +36,13 @@ metadata, temporary links, listings, revisions and search. Mutation endpoints
 remain single-attempt because repeating a timed-out write can create duplicate
 effects.
 
-Use 0.6.1 or newer. Version 0.6.1 fixes a regression in 0.6.0 that allowed
+Use 0.6.3 or newer. Version 0.6.1 fixes a regression in 0.6.0 that allowed
 Dropbox API errors raised during `Storage.list/3` pagination to escape instead
 of returning `{:error, %Magpie.Error{}}`.
 
 ```elixir
 def deps do
-  [{:magpie, "~> 0.6.1"}]
+  [{:magpie, "~> 0.6.3"}]
 end
 ```
 

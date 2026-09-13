@@ -13,6 +13,7 @@ defmodule Magpie.Auth.Token do
 
   """
 
+  @derive {Inspect, only: [:expires_at, :scope, :account_id, :uid]}
   defstruct [:access_token, :refresh_token, :expires_at, :scope, :account_id, :uid]
 
   @type t :: %__MODULE__{

@@ -13,6 +13,42 @@ defmodule Magpie.Storage060Test do
   @client Client.new("fake-token")
 
   describe "integrity and conditional writes" do
+    test "unchanged detection cannot bypass a revision precondition" do
+      Req.Test.stub(Magpie, fn conn ->
+        assert conn.request_path == "/2/files/upload"
+        arg = conn |> Plug.Conn.get_req_header("dropbox-api-arg") |> hd() |> Jason.decode!()
+        assert arg["mode"] == %{".tag" => "update", "update" => "stale-revision"}
+
+        conn
+        |> Plug.Conn.put_status(409)
+        |> Req.Test.json(%{"error_summary" => "path/conflict/file/.."})
+      end)
+
+      assert {:error, %Error{status: 409}} =
+               Storage.put(@client, "/same.txt", {:binary, "same"},
+                 skip_unchanged: true,
+                 if_rev: "stale-revision"
+               )
+
+      assert_raise Error, fn ->
+        Storage.put!(@client, "/same.txt", {:binary, "same"},
+          skip_unchanged: true,
+          if_rev: "stale-revision"
+        )
+      end
+    end
+
+    test "invalid revisions fail before unchanged metadata lookup" do
+      Req.Test.stub(Magpie, fn _conn -> flunk("must validate before any request") end)
+
+      assert_raise ArgumentError, ~r/:if_rev/, fn ->
+        Storage.put(@client, "/same.txt", {:binary, "same"},
+          skip_unchanged: true,
+          if_rev: 42
+        )
+      end
+    end
+
     @tag :tmp_dir
     test "verifies a local file upload", %{tmp_dir: dir} do
       path = Path.join(dir, "verified.txt")

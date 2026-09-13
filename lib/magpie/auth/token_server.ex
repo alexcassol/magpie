@@ -175,6 +175,16 @@ defmodule Magpie.Auth.TokenServer do
     {:ok, state}
   end
 
+  # Status reports and crash diagnostics must not print the raw state or
+  # messages: both can contain credentials supplied during authorization.
+  @impl GenServer
+  def format_status(status) do
+    Map.new(status, fn
+      {key, _value} when key in [:state, :message, :reason, :log] -> {key, :redacted}
+      entry -> entry
+    end)
+  end
+
   # Unconfigured (no refresh token yet): a normal state on fresh installs,
   # answered locally — no HTTP, no crash, no logging.
   @impl GenServer
@@ -243,7 +253,7 @@ defmodule Magpie.Auth.TokenServer do
   rescue
     exception ->
       Logger.error(
-        "Magpie.Auth.TokenServer :on_refresh callback raised: " <> Exception.message(exception)
+        "Magpie.Auth.TokenServer :on_refresh callback raised: " <> inspect(exception.__struct__)
       )
 
       :ok
@@ -265,13 +275,12 @@ defmodule Magpie.Auth.TokenServer do
   defp validate!(opts) do
     unless is_binary(opts[:app_key]) do
       raise ArgumentError,
-            "Magpie.Auth.TokenServer requires a :app_key, got: #{inspect(opts[:app_key])}"
+            "Magpie.Auth.TokenServer requires a :app_key string"
     end
 
     unless is_nil(opts[:refresh_token]) or is_binary(opts[:refresh_token]) do
       raise ArgumentError,
-            "Magpie.Auth.TokenServer expects :refresh_token to be a string, " <>
-              "got: #{inspect(opts[:refresh_token])}"
+            "Magpie.Auth.TokenServer expects :refresh_token to be a string"
     end
 
     unless is_binary(opts[:app_secret]) or opts[:pkce] == true do

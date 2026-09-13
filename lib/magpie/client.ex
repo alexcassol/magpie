@@ -30,6 +30,7 @@ defmodule Magpie.Client do
   alias Magpie.Auth.StaticToken
   alias Magpie.Auth.TokenServer
 
+  @derive {Inspect, only: []}
   defstruct access_token: nil, token_provider: nil
 
   @type provider :: {module(), term()}
@@ -105,9 +106,9 @@ defmodule Magpie.Client do
 
   defp provider!({module, _arg} = provider) when is_atom(module), do: provider
 
-  defp provider!(other) do
+  defp provider!(_other) do
     raise ArgumentError,
-          "expected :token_provider to be a {module, arg} tuple, got: #{inspect(other)}"
+          "expected :token_provider to be a {module, arg} tuple"
   end
 
   defp start_token_server!(opts) do

@@ -300,6 +300,20 @@ defmodule MagpieTokenServerTest do
   end
 
   describe ":on_refresh" do
+    test "callback exception messages cannot expose credentials in logs" do
+      stub_token("sl.PRIVATE")
+      server = start_server!(on_refresh: fn token -> raise token.access_token end)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, "sl.PRIVATE"} = TokenServer.fetch_token(server)
+        end)
+
+      assert log =~ "RuntimeError"
+      refute log =~ "sl.PRIVATE"
+      assert Process.alive?(server)
+    end
+
     test "is called with the new token" do
       stub_token("sl.REFRESHED")
       test_pid = self()

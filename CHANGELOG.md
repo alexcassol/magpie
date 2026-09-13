@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-09-13
+
+### Fixed
+
+- redact token server state and sensitive messages from OTP status diagnostics
+- preserve upload failures without attempting subsequent local hash reads
+- preserve exception tuples from generic pagination callbacks
+- add regression coverage for continuation-page API/transport failures and
+  download destination preservation and temporary-file cleanup
+
+- conditional Storage uploads always enforce `if_rev`, even with
+  `skip_unchanged: true`; validate revisions before metadata lookups
+
+- hide credentials in client and OAuth token inspection, including custom
+  token provider arguments
+- avoid echoing credential options in validation errors and callback exception
+  messages in token refresh logs; retain the exception type for diagnosis
+
 ## [0.6.2] - 2026-09-08
 
 ### Documentation

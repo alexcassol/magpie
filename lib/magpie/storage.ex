@@ -45,12 +45,27 @@ defmodule Magpie.Storage do
   content hash after upload, and `:skip_unchanged` avoids uploading matching
   file/binary sources. Progress callbacks receive `(transferred, total)`;
   `total` can be `nil` for streams.
+
+  With `:if_rev`, the conditional upload always runs, even when
+  `skip_unchanged: true`: a metadata lookup cannot atomically enforce a
+  revision precondition. `:if_rev` takes precedence over `:mode`.
+
+  The default is `mode: "add", autorename: true`, which can create another
+  file when the path exists. Use `mode: "overwrite"` to replace content,
+  or `if_rev: revision` for a conditional update.
   """
   @spec put(Magpie.Client.t(), binary(), source(), keyword()) ::
           result(Magpie.FileMetadata.t())
           | {:ok, :unchanged, Magpie.FileMetadata.t()}
   def put(client, key, source, opts \\ []) do
     validate_progress!(opts)
+    write_mode(opts)
+
+    opts =
+      if Keyword.has_key?(opts, :if_rev),
+        do: Keyword.put(opts, :skip_unchanged, false),
+        else: opts
+
     safely(fn -> do_put(client, key, source, opts) end)
   end
 

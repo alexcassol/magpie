@@ -15,7 +15,7 @@ Like the bird, Magpie collects and stashes your things — in your Dropbox.
 ```elixir
 def deps do
   [
-    {:magpie, "~> 0.6.1"}
+    {:magpie, "~> 0.6.3"}
   ]
 end
 ```

@@ -483,6 +483,8 @@ defmodule Magpie.Files do
   defp update_hash(nil, _piece), do: nil
   defp update_hash(state, piece), do: ContentHash.update(state, piece)
 
+  defp verify_known_hash({:error, _} = result, _path, _opts, _hash_fun), do: result
+
   defp verify_known_hash(result, path, opts, hash_fun) do
     if Keyword.get(opts, :verify, false) do
       expected = Keyword.get_lazy(opts, :expected_hash, hash_fun)

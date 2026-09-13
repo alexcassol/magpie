@@ -65,7 +65,7 @@ defmodule Magpie.Pager do
     {items, next_acc(Map.get(page, cursor_key), Map.get(page, has_more_key))}
   end
 
-  defp emit({:error, %Magpie.Error{} = error}, _items_key, _cursor_key, _has_more_key),
+  defp emit({:error, %{__exception__: true} = error}, _items_key, _cursor_key, _has_more_key),
     do: raise(error)
 
   # has_more absent: keep going while there is a cursor
