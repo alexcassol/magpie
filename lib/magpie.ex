@@ -32,6 +32,11 @@ defmodule Magpie do
   Setting `retry: false` disables automatic retries. A `:delay` integer or
   one-arity function overrides `Retry-After`/exponential backoff. Mutation
   routes are never retried automatically, regardless of this setting.
+
+  Use `Magpie.Client.new/2` or `Magpie.Client.with_options/2` to override
+  configuration per client, and `request: [...]` on Storage calls to override
+  it per operation. See the [configuration guide](configuration.html) for
+  precedence, execution budgets and diagnostic fields.
   """
 
   @default_base_url "https://api.dropboxapi.com/2"
@@ -103,8 +108,8 @@ defmodule Magpie do
 
   defp do_process_response(%Req.Response{status: 200, body: body}), do: {:ok, body}
 
-  defp do_process_response(%Req.Response{status: status, body: body, headers: headers}),
-    do: {:error, Magpie.Error.new(status, body, headers)}
+  defp do_process_response(%Req.Response{} = response),
+    do: {:error, response_error(response)}
 
   @spec download_response(Req.Response.t()) :: response_download
   def download_response(%Req.Response{} = response) do
@@ -117,8 +122,17 @@ defmodule Magpie do
   defp do_download_response(%Req.Response{status: 200, body: body, headers: headers}),
     do: {:ok, %{body: body, headers: headers}}
 
-  defp do_download_response(%Req.Response{status: status, body: body, headers: headers}),
-    do: {:error, Magpie.Error.new(status, body, headers)}
+  defp do_download_response(%Req.Response{} = response),
+    do: {:error, response_error(response)}
+
+  defp response_error(response) do
+    error = Magpie.Error.new(response.status, response.body, response.headers)
+
+    struct(
+      error,
+      Map.take(Map.get(response.private, :magpie_diagnostics, %{}), [:endpoint, :attempts])
+    )
+  end
 
   # Errors produced by the auth steps (a token provider that could not hand
   # out a token) ride back on the response, already normalized.
@@ -146,7 +160,7 @@ defmodule Magpie do
   def upload_request(client, base_url, url, file, headers) do
     client
     |> new_req(base_url: base_url, headers: headers)
-    |> request!(url, body: File.stream!(file, 64_000))
+    |> request!(url, body: Magpie.Utils.file_stream(file, 64_000))
     |> process_response()
   end
 
@@ -252,13 +266,41 @@ defmodule Magpie do
   end
 
   def new_req(client, opts \\ []) do
-    base_url = Keyword.get(opts, :base_url, base_url())
-    headers = Keyword.get(opts, :headers, [])
+    default_url = Keyword.get(opts, :base_url, base_url())
+    url_key = if default_url == upload_url(), do: :upload_url, else: :base_url
+    config = Map.get(client, :config, [])
 
-    [base_url: base_url, headers: headers]
-    |> Keyword.merge(Application.get_env(:magpie, :req_options, []))
-    |> Req.new()
+    req_options =
+      Keyword.merge(
+        Application.get_env(:magpie, :req_options, []),
+        Keyword.get(config, :req_options, [])
+      )
+
+    base =
+      cond do
+        Keyword.has_key?(opts, :base_url) and default_url not in [base_url(), upload_url()] ->
+          default_url
+
+        Keyword.has_key?(config, url_key) ->
+          Keyword.fetch!(config, url_key)
+
+        true ->
+          Keyword.get(req_options, :base_url, default_url)
+      end
+
+    timeout = Magpie.Client.option(client, :timeout, :infinity)
+    retry = Magpie.Client.option(client, :retry, [])
+    Magpie.Options.config!(timeout: timeout, retry: retry)
+
+    Req.new(Keyword.put(req_options, :base_url, base))
+    |> Req.merge(Keyword.delete(opts, :base_url))
+    |> Req.Request.put_private(:magpie_retry, retry)
+    |> Req.Request.put_private(:magpie_timeout, timeout)
+    |> Req.Request.put_private(:magpie_deadline, Map.get(client, :deadline))
+    |> Req.Request.put_private(:magpie_account_id, Keyword.get(config, :account_id))
     |> Magpie.Auth.Steps.attach(Magpie.Client.token_provider(client))
+    |> Req.Request.prepend_request_steps(magpie_check_budget: &Magpie.Budget.check!/1)
+    |> Req.Request.append_request_steps(magpie_budget: &Magpie.Budget.prepare/1)
   end
 
   defp request!(req, url, opts, overrides \\ []) do
@@ -267,24 +309,43 @@ defmodule Magpie do
     metadata = %{
       method: :post,
       endpoint: endpoint,
-      operation: endpoint |> String.trim_leading("/") |> String.replace("/", ".")
+      operation: endpoint |> String.trim_leading("/") |> String.replace("/", "."),
+      account_id: Req.Request.get_private(req, :magpie_account_id)
     }
 
-    req = Req.Request.put_private(req, :magpie_telemetry, metadata)
+    deadline =
+      Req.Request.get_private(req, :magpie_deadline) ||
+        Magpie.Budget.deadline(Req.Request.get_private(req, :magpie_timeout, :infinity))
+
+    req =
+      req
+      |> Req.Request.put_private(:magpie_telemetry, metadata)
+      |> Req.Request.put_private(:magpie_deadline, deadline)
 
     request_opts =
       url
-      |> retry_options()
+      |> retry_options(Req.Request.get_private(req, :magpie_retry, []))
       |> Keyword.merge(opts)
       |> Keyword.merge(overrides)
+      |> Keyword.put(:retry_delay, nil)
       |> Keyword.put(:url, url)
 
-    Magpie.Telemetry.span(metadata, fn -> Req.post!(req, request_opts) end)
+    Magpie.Telemetry.span(metadata, fn ->
+      {request, response} = Req.run(req, Keyword.put(request_opts, :method, :post))
+      Magpie.Budget.check!(request)
+
+      if is_exception(response), do: raise(response)
+
+      diagnostics = %{
+        endpoint: endpoint,
+        attempts: Req.Request.get_private(request, :magpie_attempts, 0)
+      }
+
+      Req.Response.put_private(response, :magpie_diagnostics, diagnostics)
+    end)
   end
 
-  defp retry_options(url) do
-    retry_config = Application.get_env(:magpie, :retry, [])
-
+  defp retry_options(url, retry_config) do
     cond do
       retry_config == false ->
         [retry: false]
@@ -297,17 +358,9 @@ defmodule Magpie do
           max_retries: Keyword.get(retry_config, :max_retries, 3),
           retry_log_level: Keyword.get(retry_config, :log_level, :warning)
         ]
-        |> maybe_put_retry_delay(retry_config)
 
       true ->
         [retry: false]
-    end
-  end
-
-  defp maybe_put_retry_delay(opts, config) do
-    case Keyword.fetch(config, :delay) do
-      {:ok, delay} -> Keyword.put(opts, :retry_delay, delay)
-      :error -> opts
     end
   end
 

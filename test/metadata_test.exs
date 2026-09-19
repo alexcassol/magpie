@@ -233,12 +233,12 @@ defmodule Magpie.MetadataTest do
     end
 
     @tag :tmp_dir
-    test "works with File.stream!/2", %{tmp_dir: dir} do
+    test "works with file streams on supported Elixir versions", %{tmp_dir: dir} do
       path = Path.join(dir, "blob.bin")
       data = :crypto.strong_rand_bytes(300_000)
       File.write!(path, data)
 
-      assert Metadata.content_hash(File.stream!(path, 65_536)) == reference_hash(data)
+      assert Metadata.content_hash(Magpie.Utils.file_stream(path, 65_536)) == reference_hash(data)
     end
   end
 

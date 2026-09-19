@@ -39,6 +39,7 @@ defmodule Magpie.Auth.Steps do
   # Response step: on `expired_access_token`, refresh once and replay.
   defp maybe_refresh({request, %Req.Response{} = response}) do
     if retry?(request, response) do
+      Magpie.Budget.check!(request)
       {module, arg} = Req.Request.get_private(request, @provider_key)
 
       case module.refresh_token(arg) do

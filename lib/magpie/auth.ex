@@ -42,6 +42,10 @@ defmodule Magpie.Auth do
         oauth_authorize_url: "https://www.dropbox.com/oauth2/authorize",
         oauth_token_url: "https://api.dropboxapi.com/oauth2/token"
 
+  `exchange_code/3` and `refresh/3` accept `req_options: [...]` for per-call
+  HTTP configuration, overriding global Req options. The OAuth form is built
+  from the explicit arguments and cannot be replaced by `req_options`.
+
   """
   import Magpie
 
@@ -58,6 +62,7 @@ defmodule Magpie.Auth do
           {:app_secret, String.t() | nil}
           | {:code_verifier, String.t() | nil}
           | {:redirect_uri, String.t() | nil}
+          | {:req_options, keyword()}
 
   @doc """
   Builds the URL where the user authorizes your app.
@@ -181,7 +186,7 @@ defmodule Magpie.Auth do
     |> put_param(:client_secret, opts[:app_secret])
     |> put_param(:code_verifier, opts[:code_verifier])
     |> put_param(:redirect_uri, opts[:redirect_uri])
-    |> token_request()
+    |> token_request(opts)
   end
 
   @doc """
@@ -201,7 +206,7 @@ defmodule Magpie.Auth do
   def refresh(app_key, refresh_token, opts \\ []) do
     [refresh_token: refresh_token, grant_type: "refresh_token", client_id: app_key]
     |> put_param(:client_secret, opts[:app_secret])
-    |> token_request()
+    |> token_request(opts)
   end
 
   @doc """
@@ -213,7 +218,9 @@ defmodule Magpie.Auth do
     post(client, "/auth/token/revoke")
   end
 
-  defp token_request(form) do
+  defp token_request(form, opts) do
+    req_options = Keyword.get(opts, :req_options, [])
+    Magpie.Options.config!(req_options: req_options)
     # Bounded on purpose: a token request often runs inside
     # `Magpie.Auth.TokenServer`, where a hanging call would block every
     # other caller waiting for the same refresh.
@@ -224,6 +231,8 @@ defmodule Magpie.Auth do
       receive_timeout: @http_timeout
     ]
     |> Keyword.merge(Application.get_env(:magpie, :req_options, []))
+    |> Keyword.merge(req_options)
+    |> Keyword.put(:form, form)
     |> Req.new()
     |> Req.post!()
     |> token_response()
@@ -232,8 +241,8 @@ defmodule Magpie.Auth do
   defp token_response(%Req.Response{status: 200, body: body}) when is_map(body),
     do: {:ok, Token.from_response(body)}
 
-  defp token_response(%Req.Response{status: status, body: body}),
-    do: {:error, Error.new(status, body)}
+  defp token_response(%Req.Response{status: status, body: body, headers: headers}),
+    do: {:error, Error.new(status, body, headers)}
 
   defp put_param(params, _key, nil), do: params
   defp put_param(params, key, value), do: params ++ [{key, value}]

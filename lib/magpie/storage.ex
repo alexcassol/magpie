@@ -24,6 +24,12 @@ defmodule Magpie.Storage do
 
   Paths are Dropbox paths, not S3 bucket/key pairs. Temporary download URLs
   expire according to Dropbox's rules (normally after four hours).
+
+  All operations accept `request: [...]` to override client HTTP options,
+  retries and execution budget. Unknown/duplicate options and invalid values
+  raise `ArgumentError` before I/O. Operational errors remain error tuples;
+  bang functions and lazy streams raise. See the
+  [configuration guide](configuration.html) for contracts and precedence.
   """
 
   alias Magpie.Error
@@ -58,6 +64,7 @@ defmodule Magpie.Storage do
           result(Magpie.FileMetadata.t())
           | {:ok, :unchanged, Magpie.FileMetadata.t()}
   def put(client, key, source, opts \\ []) do
+    {client, opts} = prepare(client, opts, :put)
     validate_progress!(opts)
     write_mode(opts)
 
@@ -71,7 +78,7 @@ defmodule Magpie.Storage do
 
   defp do_put(client, key, {:file, path} = source, opts) do
     put_with_hash(client, key, source, opts, fn ->
-      Metadata.content_hash(File.stream!(path, 65_536))
+      Metadata.content_hash(Magpie.Utils.file_stream(path, 65_536))
     end)
   end
 
@@ -87,12 +94,12 @@ defmodule Magpie.Storage do
             ":skip_unchanged is not supported for streams because they cannot be read twice"
     end
 
-    Files.upload_stream(client, key, enumerable, opts)
+    Files.upload_stream(client, key, enumerable, Keyword.delete(opts, :skip_unchanged))
   end
 
-  defp do_put(_client, _key, source, _opts) do
+  defp do_put(_client, _key, _source, _opts) do
     raise ArgumentError,
-          "expected source to be {:file, path}, {:binary, iodata}, or {:stream, enumerable}, got: #{inspect(source)}"
+          "expected source to be {:file, path}, {:binary, iodata}, or {:stream, enumerable}, received an unsupported source"
   end
 
   @doc """
@@ -111,6 +118,8 @@ defmodule Magpie.Storage do
   """
   @spec get(Magpie.Client.t(), binary(), keyword()) :: result(binary() | map())
   def get(client, key, opts \\ []) do
+    {client, opts} = prepare(client, opts, :get)
+
     safely(fn ->
       case Files.download(client, key) do
         {:ok, %{body: body} = response} ->
@@ -136,6 +145,7 @@ defmodule Magpie.Storage do
   """
   @spec download(Magpie.Client.t(), binary(), Path.t(), keyword()) :: result(Path.t())
   def download(client, key, destination, opts \\ []) do
+    {client, opts} = prepare(client, opts, :download)
     validate_progress!(opts)
 
     safely(fn ->
@@ -152,6 +162,7 @@ defmodule Magpie.Storage do
 
   @doc "Deletes a Dropbox file or folder and returns its final metadata."
   def delete(client, key, opts \\ []) do
+    {client, opts} = prepare(client, opts, :delete)
     safely(fn -> Files.delete_folder(client, key, option_map(opts, [:parent_rev])) end)
   end
 
@@ -170,6 +181,8 @@ defmodule Magpie.Storage do
 
   @doc "Returns typed Dropbox metadata for `key`."
   def stat(client, key, opts \\ []) do
+    {client, opts} = prepare(client, opts, :stat)
+
     safely(fn ->
       Files.get_metadata(
         client,
@@ -203,13 +216,20 @@ defmodule Magpie.Storage do
   @doc "Returns a lazy stream over every entry below `prefix`."
   @spec stream(Magpie.Client.t(), binary(), keyword()) :: Enumerable.t()
   def stream(client, prefix \\ "", opts \\ []) do
-    ListFolder.stream(client, prefix, option_map(opts))
+    Magpie.Options.storage!(:list, opts)
+
+    Stream.flat_map([:start], fn _ ->
+      {client, opts} = prepare(client, opts, :list)
+      ListFolder.stream(client, prefix, option_map(opts))
+    end)
   end
 
   @doc "Returns a temporary direct-download URL for `key`."
   @spec url(Magpie.Client.t(), binary(), keyword()) ::
           {:ok, binary()} | {:error, Exception.t()}
-  def url(client, key, _opts \\ []) do
+  def url(client, key, opts \\ []) do
+    {client, _opts} = prepare(client, opts, :url)
+
     safely(fn ->
       client
       |> Files.get_temporary_link(key)
@@ -224,6 +244,7 @@ defmodule Magpie.Storage do
   @spec upload_url(Magpie.Client.t(), binary(), keyword()) ::
           {:ok, binary()} | {:error, Exception.t()}
   def upload_url(client, key, opts \\ []) do
+    {client, opts} = prepare(client, opts, :upload_url)
     duration = Keyword.get(opts, :duration, 14_400)
 
     commit = %{
@@ -244,7 +265,8 @@ defmodule Magpie.Storage do
   def upload_url!(client, key, opts \\ []), do: upload_url(client, key, opts) |> unwrap!()
 
   @doc "Copies a Dropbox file or folder to `destination`."
-  def copy(client, source, destination, _opts \\ []) do
+  def copy(client, source, destination, opts \\ []) do
+    {client, _opts} = prepare(client, opts, :copy)
     safely(fn -> Files.copy(client, source, destination) end)
   end
 
@@ -253,7 +275,8 @@ defmodule Magpie.Storage do
     do: copy(client, source, destination, opts) |> unwrap!()
 
   @doc "Moves a Dropbox file or folder to `destination`."
-  def move(client, source, destination, _opts \\ []) do
+  def move(client, source, destination, opts \\ []) do
+    {client, _opts} = prepare(client, opts, :move)
     safely(fn -> Files.move(client, source, destination) end)
   end
 
@@ -262,7 +285,8 @@ defmodule Magpie.Storage do
     do: move(client, source, destination, opts) |> unwrap!()
 
   @doc "Creates a Dropbox folder at `key`."
-  def mkdir(client, key, _opts \\ []) do
+  def mkdir(client, key, opts \\ []) do
+    {client, _opts} = prepare(client, opts, :mkdir)
     safely(fn -> Files.create_folder(client, key) end)
   end
 
@@ -278,6 +302,7 @@ defmodule Magpie.Storage do
   passed to every upload.
   """
   def put_many(client, entries, opts \\ []) when is_list(entries) do
+    Magpie.Options.batch!(:put, opts)
     common_opts = Keyword.drop(opts, @batch_options)
 
     batch(entries, opts, :put, fn entry ->
@@ -293,6 +318,7 @@ defmodule Magpie.Storage do
   passed to every deletion.
   """
   def delete_many(client, keys, opts \\ []) when is_list(keys) do
+    Magpie.Options.batch!(:delete, opts)
     delete_opts = Keyword.drop(opts, @batch_options)
     batch(keys, opts, :delete, fn key -> {key, delete(client, key, delete_opts)} end)
   end
@@ -336,17 +362,17 @@ defmodule Magpie.Storage do
   end
 
   defp upload_source(client, key, {:file, path}, opts),
-    do: Files.upload_file(client, key, path, opts)
+    do: Files.upload_file(client, key, path, Keyword.delete(opts, :skip_unchanged))
 
   defp upload_source(client, key, {:binary, data}, opts),
-    do: Files.upload_data(client, key, data, opts)
+    do: Files.upload_data(client, key, data, Keyword.delete(opts, :skip_unchanged))
 
   defp put_entry({key, source}), do: {key, source, []}
   defp put_entry({key, source, opts}) when is_list(opts), do: {key, source, opts}
 
-  defp put_entry(entry) do
+  defp put_entry(_entry) do
     raise ArgumentError,
-          "expected a batch entry to be {key, source} or {key, source, options}, got: #{inspect(entry)}"
+          "expected a batch entry to be {key, source} or {key, source, options}, received an unsupported entry"
   end
 
   defp batch(items, opts, operation, fun) do
@@ -420,12 +446,13 @@ defmodule Magpie.Storage do
     end
   end
 
-  defp write_mode(opts) do
-    case Keyword.fetch(opts, :if_rev) do
-      {:ok, rev} when is_binary(rev) -> %{".tag" => "update", "update" => rev}
-      {:ok, rev} -> raise ArgumentError, ":if_rev must be a revision string, got: #{inspect(rev)}"
-      :error -> Keyword.get(opts, :mode, "add")
-    end
+  defp write_mode(opts), do: Magpie.Options.write_mode(opts)
+
+  defp prepare(client, opts, operation) do
+    Magpie.Options.storage!(operation, opts)
+    {request, opts} = Keyword.pop(opts, :request, [])
+    client = client |> Magpie.Client.with_options(request) |> Magpie.Client.begin_operation()
+    {client, opts}
   end
 
   defp link_result({:ok, %{"link" => link}}), do: {:ok, link}
@@ -452,7 +479,8 @@ defmodule Magpie.Storage do
   defp safely(fun) do
     fun.()
   rescue
-    error in [Error, Req.TransportError, Req.HTTPError, File.Error] -> {:error, error}
+    error in [Error, Magpie.TimeoutError, Req.TransportError, Req.HTTPError, File.Error] ->
+      {:error, error}
   end
 
   defp unwrap!({:ok, :unchanged, value}), do: {:unchanged, value}

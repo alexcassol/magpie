@@ -10,6 +10,9 @@ defmodule Magpie.Error do
       (e.g. `"path/not_found/.."`), `nil` otherwise
     * `body` — the full decoded error payload
     * `request_id` — Dropbox's request identifier, useful when contacting support
+    * `endpoint` — normalized API route when the error came through the HTTP layer
+    * `attempts` — number of HTTP attempts, including authentication replay
+    * `retry_after` — server-requested delay in milliseconds, or `nil`
 
   It is also an exception, so it can be raised — `Magpie.Pager` streams do
   exactly that, since a `Stream` cannot return an error tuple
@@ -23,13 +26,16 @@ defmodule Magpie.Error do
 
   """
 
-  defexception [:status, :body, :summary, :request_id]
+  defexception [:status, :body, :summary, :request_id, :endpoint, :retry_after, attempts: 1]
 
   @type t :: %__MODULE__{
           status: pos_integer(),
           body: term(),
           summary: String.t() | nil,
-          request_id: String.t() | nil
+          request_id: String.t() | nil,
+          endpoint: String.t() | nil,
+          retry_after: non_neg_integer() | nil,
+          attempts: non_neg_integer()
         }
 
   @doc """
@@ -54,7 +60,8 @@ defmodule Magpie.Error do
       status: status,
       body: body,
       summary: summary,
-      request_id: request_id(headers)
+      request_id: request_id(headers),
+      retry_after: retry_after(headers)
     }
 
   def new(status, %{"error" => summary} = body, headers) when is_binary(summary),
@@ -62,11 +69,66 @@ defmodule Magpie.Error do
       status: status,
       body: body,
       summary: summary,
-      request_id: request_id(headers)
+      request_id: request_id(headers),
+      retry_after: retry_after(headers)
     }
 
   def new(status, body, headers),
-    do: %__MODULE__{status: status, body: body, summary: nil, request_id: request_id(headers)}
+    do: %__MODULE__{
+      status: status,
+      body: body,
+      summary: nil,
+      request_id: request_id(headers),
+      retry_after: retry_after(headers)
+    }
+
+  @doc """
+  Returns a safe diagnostic map without response bodies or credentials.
+
+  `:retry_after` is milliseconds, `:attempts` counts HTTP attempts (including
+  an authentication replay), and `:endpoint` identifies the API route.
+  """
+  @spec diagnostics(t()) :: map()
+  def diagnostics(%__MODULE__{} = error) do
+    error
+    |> Map.from_struct()
+    |> Map.take([:status, :request_id, :endpoint, :retry_after, :attempts])
+  end
+
+  @doc "Returns the required scope reported by Dropbox, or nil."
+  @spec required_scope(t()) :: String.t() | nil
+  def required_scope(%__MODULE__{
+        body: %{"error" => %{".tag" => "missing_scope", "required_scope" => scope}}
+      })
+      when is_binary(scope), do: scope
+
+  def required_scope(_), do: nil
+
+  @doc false
+  def retry_after(headers) do
+    case header(headers, "retry-after") do
+      nil ->
+        nil
+
+      value when is_binary(value) ->
+        case Integer.parse(value) do
+          {seconds, ""} when seconds >= 0 -> seconds * 1000
+          _ -> retry_date(value)
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp retry_date(value) do
+    Req.Response.new(headers: [{"retry-after", value}])
+    |> Req.Response.get_retry_after()
+  rescue
+    _ -> nil
+  catch
+    _, _ -> nil
+  end
 
   @doc "Returns whether an error represents a content integrity mismatch."
   @spec integrity?(term()) :: boolean()
@@ -126,20 +188,19 @@ defmodule Magpie.Error do
 
   defp summary_has_segment?(_summary, _tag), do: false
 
-  defp request_id(headers) when is_map(headers),
-    do: headers |> Map.get("x-dropbox-request-id", []) |> List.wrap() |> List.first()
+  defp request_id(headers), do: header(headers, "x-dropbox-request-id")
 
-  defp request_id(headers) when is_list(headers) do
-    headers
-    |> Enum.find_value(fn
-      {key, value} when key in ["x-dropbox-request-id", "X-Dropbox-Request-Id"] -> value
-      _ -> nil
+  defp header(headers, name) when is_map(headers) or is_list(headers) do
+    Enum.find_value(headers, fn
+      {key, value} when is_binary(key) ->
+        if String.downcase(key) == name, do: value |> List.wrap() |> List.first()
+
+      _ ->
+        nil
     end)
-    |> List.wrap()
-    |> List.first()
   end
 
-  defp request_id(_), do: nil
+  defp header(_, _), do: nil
 
   @impl true
   def message(%__MODULE__{status: status, summary: nil, body: body}),

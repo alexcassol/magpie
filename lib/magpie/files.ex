@@ -298,6 +298,7 @@ defmodule Magpie.Files do
 
   """
   def upload_file(client, path, local_path, opts \\ []) do
+    Magpie.Options.upload!(opts)
     opts = Keyword.put(opts, :transfer_path, path)
     threshold = Keyword.get(opts, :session_threshold, @session_threshold)
 
@@ -315,12 +316,18 @@ defmodule Magpie.Files do
         )
         |> notify_upload_progress(opts, size)
         |> verify_known_hash(path, opts, fn ->
-          Metadata.content_hash(File.stream!(local_path, 65_536))
+          Metadata.content_hash(Magpie.Utils.file_stream(local_path, 65_536))
         end)
 
       {:ok, %File.Stat{size: size}} ->
         opts = Keyword.put(opts, :transfer_size, size)
-        upload_via_session(client, path, File.stream!(local_path, chunk_size(opts)), opts)
+
+        upload_via_session(
+          client,
+          path,
+          Magpie.Utils.file_stream(local_path, chunk_size(opts)),
+          opts
+        )
 
       {:error, reason} ->
         {:error, reason}
@@ -340,6 +347,7 @@ defmodule Magpie.Files do
           {:ok, Magpie.FileMetadata.t()}
           | {:error, Magpie.Error.t() | Magpie.IntegrityError.t()}
   def upload_data(client, path, data, opts \\ []) do
+    Magpie.Options.upload!(opts)
     opts = Keyword.put(opts, :transfer_path, path)
     threshold = Keyword.get(opts, :session_threshold, @session_threshold)
     size = IO.iodata_length(data)
@@ -373,6 +381,7 @@ defmodule Magpie.Files do
           {:ok, Magpie.FileMetadata.t()}
           | {:error, Magpie.Error.t() | Magpie.IntegrityError.t()}
   def upload_stream(client, path, enumerable, opts \\ []) do
+    Magpie.Options.upload!(opts)
     opts = Keyword.put(opts, :transfer_path, path)
     upload_via_session(client, path, enumerable, opts)
   end
@@ -472,13 +481,7 @@ defmodule Magpie.Files do
     }
   end
 
-  defp write_mode(opts) do
-    case Keyword.fetch(opts, :if_rev) do
-      {:ok, rev} when is_binary(rev) -> %{".tag" => "update", "update" => rev}
-      {:ok, rev} -> raise ArgumentError, ":if_rev must be a revision string, got: #{inspect(rev)}"
-      :error -> Keyword.get(opts, :mode, "add")
-    end
-  end
+  defp write_mode(opts), do: Magpie.Options.write_mode(opts)
 
   defp update_hash(nil, _piece), do: nil
   defp update_hash(state, piece), do: ContentHash.update(state, piece)

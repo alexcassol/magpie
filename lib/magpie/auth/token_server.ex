@@ -42,6 +42,8 @@ defmodule Magpie.Auth.TokenServer do
       considered stale (default `300`)
     * `:on_refresh` — 1-arity function called with the new
       `Magpie.Auth.Token` after every successful refresh, e.g. to persist it
+    * `:req_options` — per-server OAuth HTTP options, overriding application
+      Req options without changing file-request clients
 
   ## Concurrency
 
@@ -166,6 +168,7 @@ defmodule Magpie.Auth.TokenServer do
     state = %{
       app_key: opts[:app_key],
       app_secret: opts[:app_secret],
+      req_options: Keyword.get(opts, :req_options, []),
       refresh_token: opts[:refresh_token],
       refresh_margin: Keyword.get(opts, :refresh_margin, @default_refresh_margin),
       on_refresh: opts[:on_refresh],
@@ -230,7 +233,10 @@ defmodule Magpie.Auth.TokenServer do
   end
 
   defp do_refresh(state) do
-    case Auth.refresh(state.app_key, state.refresh_token, app_secret: state.app_secret) do
+    case Auth.refresh(state.app_key, state.refresh_token,
+           app_secret: state.app_secret,
+           req_options: state.req_options
+         ) do
       {:ok, token} ->
         # Refresh responses carry no refresh token — Dropbox does not rotate
         # them — so the one we already hold stays in place.
@@ -273,6 +279,8 @@ defmodule Magpie.Auth.TokenServer do
   end
 
   defp validate!(opts) do
+    Magpie.Options.config!(req_options: Keyword.get(opts, :req_options, []))
+
     unless is_binary(opts[:app_key]) do
       raise ArgumentError,
             "Magpie.Auth.TokenServer requires a :app_key string"

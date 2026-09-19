@@ -31,11 +31,16 @@ defmodule Magpie.Client do
   alias Magpie.Auth.TokenServer
 
   @derive {Inspect, only: []}
-  defstruct access_token: nil, token_provider: nil
+  defstruct access_token: nil, token_provider: nil, config: [], deadline: nil
 
   @type provider :: {module(), term()}
   @type access_token :: binary()
-  @type t :: %__MODULE__{access_token: access_token | nil, token_provider: provider | nil}
+  @type t :: %__MODULE__{
+          access_token: access_token | nil,
+          token_provider: provider | nil,
+          config: keyword(),
+          deadline: integer() | nil
+        }
   @type m :: %__MODULE__{}
 
   @doc """
@@ -62,8 +67,9 @@ defmodule Magpie.Client do
       {Magpie.Auth.TokenServer, MyApp.DropboxToken}
 
   With `:refresh_token`, a `Magpie.Auth.TokenServer` is started and linked to
-  the calling process — every other option (`:name`, `:refresh_margin`,
-  `:on_refresh`, ...) is forwarded to it:
+  the calling process. Token options (`:name`, `:refresh_margin`, `:on_refresh`,
+  ...) are forwarded to it; `:oauth_req_options` configures its HTTP calls
+  separately from the client's file-request `:req_options`:
 
       client =
         Magpie.Client.new(
@@ -79,11 +85,100 @@ defmodule Magpie.Client do
   end
 
   def new(opts) when is_list(opts) do
-    cond do
-      provider = opts[:token_provider] -> %__MODULE__{token_provider: provider!(provider)}
-      opts[:refresh_token] -> %__MODULE__{token_provider: start_token_server!(opts)}
-      true -> raise ArgumentError, "expected a :token_provider or a :refresh_token option"
+    Magpie.Options.keyword!(opts)
+    {config, credentials} = Keyword.split(opts, Magpie.Options.config_keys())
+    Magpie.Options.config!(config)
+
+    allowed = [
+      :token_provider,
+      :refresh_token,
+      :access_token,
+      :app_key,
+      :app_secret,
+      :pkce,
+      :name,
+      :refresh_margin,
+      :on_refresh,
+      :expires_at,
+      :oauth_req_options
+    ]
+
+    if Enum.any?(Keyword.keys(credentials), &(&1 not in allowed)),
+      do: raise(ArgumentError, "unsupported client option")
+
+    client =
+      cond do
+        provider = credentials[:token_provider] ->
+          %__MODULE__{token_provider: provider!(provider)}
+
+        credentials[:refresh_token] ->
+          %__MODULE__{token_provider: start_token_server!(credentials)}
+
+        is_binary(credentials[:access_token]) ->
+          new(credentials[:access_token])
+
+        true ->
+          raise ArgumentError,
+                "expected a :token_provider or a :refresh_token option, or :access_token"
+      end
+
+    %{client | config: config}
+  end
+
+  @doc "Builds a static-token client with its own request settings."
+  @spec new(binary(), keyword()) :: t()
+  def new(token, opts) when is_binary(token), do: with_options(new(token), opts)
+
+  @doc """
+  Returns a client with merged configuration; the original is unchanged.
+
+  Supports `:req_options`, `:retry` (false or a keyword list), `:timeout`
+  (execution budget in milliseconds or `:infinity`), `:base_url`,
+  `:upload_url`, `:account_id` (a local diagnostic label), and `:scopes`
+  (a list of known granted scopes, or nil when unknown).
+
+  Precedence is operation > client > application > defaults. `:req_options`
+  merge by key; `:retry` replaces the entire policy. Request configuration
+  does not reconfigure an independently supervised OAuth token provider.
+  See the [configuration guide](configuration.html) for budget semantics.
+  """
+  @spec with_options(t(), keyword()) :: t()
+  def with_options(%__MODULE__{} = client, opts) do
+    Magpie.Options.config!(opts)
+
+    config =
+      Keyword.merge(client.config, opts, fn
+        :req_options, old, new -> Keyword.merge(old, new)
+        _key, _old, new -> new
+      end)
+
+    %{client | config: config}
+  end
+
+  @doc """
+  Lists missing scopes from caller-supplied grants, or returns `:unknown`.
+
+  Uses the scope list supplied by the caller. It does not contact Dropbox
+  or block requests.
+  """
+  @spec missing_scopes(t(), [String.t()]) :: [String.t()] | :unknown
+  def missing_scopes(client, required) when is_list(required) do
+    case Keyword.get(client.config, :scopes) do
+      nil -> :unknown
+      granted -> required -- granted
     end
+  end
+
+  @doc false
+  def option(client, key, default \\ nil) do
+    Keyword.get(Map.get(client, :config, []), key, Application.get_env(:magpie, key, default))
+  end
+
+  @doc false
+  def begin_operation(client) do
+    timeout = option(client, :timeout, :infinity)
+    Magpie.Options.config!(timeout: timeout)
+    %{client | deadline: client.deadline || Magpie.Budget.deadline(timeout)}
   end
 
   @doc """
@@ -112,10 +207,13 @@ defmodule Magpie.Client do
   end
 
   defp start_token_server!(opts) do
+    {oauth_options, opts} = Keyword.pop(opts, :oauth_req_options, [])
+    opts = Keyword.put(opts, :req_options, oauth_options)
+
     case TokenServer.start_link(opts) do
       {:ok, pid} -> {TokenServer, pid}
       {:error, {:already_started, pid}} -> {TokenServer, pid}
-      {:error, reason} -> raise "could not start Magpie.Auth.TokenServer: #{inspect(reason)}"
+      {:error, _reason} -> raise "could not start Magpie.Auth.TokenServer"
     end
   end
 end

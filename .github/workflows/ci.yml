@@ -8,28 +8,40 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - elixir: "1.15.8"
+            otp: "26.2"
+          - elixir: "1.18.4"
+            otp: "27.3"
+          - elixir: "1.20"
+            otp: "29"
     steps:
       - uses: actions/checkout@v4
 
       - uses: erlef/setup-beam@v1
         with:
-          elixir-version: "1.20"
-          otp-version: "29"
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
 
       - uses: actions/cache@v4
         with:
           path: |
             deps
             _build
-          key: mix-${{ runner.os }}-${{ hashFiles('mix.exs') }}
+          key: mix-${{ runner.os }}-${{ matrix.elixir }}-${{ matrix.otp }}-${{ hashFiles('mix.exs', 'mix.lock') }}
 
       - run: mix deps.get
       - run: mix format --check-formatted
+        if: matrix.elixir == '1.20'
       - run: mix compile --warnings-as-errors
       - run: mix test
 
       # Coverage upload must not break the build (e.g. coveralls.io hiccups)
       - run: mix coveralls.github
+        if: matrix.elixir == '1.20'
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -56,7 +68,7 @@ jobs:
           path: |
             deps
             _build
-          key: mix-${{ runner.os }}-${{ hashFiles('mix.exs') }}
+          key: mix-${{ runner.os }}-1.20-29-${{ hashFiles('mix.exs', 'mix.lock') }}
 
       - name: Read the version from mix.exs
         id: version

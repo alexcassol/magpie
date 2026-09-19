@@ -1,7 +1,7 @@
 defmodule Magpie.MixProject do
   use Mix.Project
 
-  @version "0.6.3"
+  @version "0.7.0"
   @source_url "https://github.com/alexcassol/magpie"
 
   def project do
@@ -55,6 +55,8 @@ defmodule Magpie.MixProject do
         "guides/examples.md",
         "guides/oauth.md",
         "guides/phoenix.md",
+        "guides/configuration.md",
+        "guides/testing.md",
         "guides/upgrading.md",
         "CHANGELOG.md",
         "LICENSE"
@@ -71,6 +73,7 @@ defmodule Magpie.MixProject do
           Magpie.IntegrityError,
           Magpie.Storage,
           Magpie.Telemetry,
+          Magpie.TimeoutError,
           Magpie.Utils
         ],
         "OAuth & tokens": [

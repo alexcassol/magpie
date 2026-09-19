@@ -1,5 +1,37 @@
 # Upgrading Magpie
 
+## From 0.6.x to 0.7.0
+
+Existing successful results and write defaults remain unchanged. The main
+change is **option validation**: Storage no longer ignores
+misspelled or unsupported keywords, duplicate options, invalid booleans, empty
+revisions, invalid write modes or invalid transfer/batch limits. High-level Files
+uploads validate their options too. These errors raise `ArgumentError`
+before I/O. In batches, invalid per-item options affect that item only; invalid
+common options stop the call before any item starts.
+
+Remove previously ignored options. If you need a Dropbox field that Storage does
+not expose, use its low-level endpoint module. Keep request configuration inside
+`request: [...]`, to separate HTTP settings from Dropbox arguments:
+
+```elixir
+client = Magpie.Client.new("ACCESS_TOKEN", retry: [max_retries: 2], timeout: 30_000)
+Magpie.Storage.list(client, "/Backup", recursive: true, request: [timeout: 5_000])
+```
+
+Global configuration still works. Per-client and per-operation settings are
+optional; the default execution budget is unlimited. A configured deadline adds
+`Magpie.TimeoutError` to operational failures returned by normal Storage calls.
+Bang functions and streams raise it. The budget does not interrupt running callbacks or kill the process. The
+[configuration guide](configuration.md) explains what it covers and how to
+configure OAuth requests separately.
+
+API errors add fields without removing existing ones. `retry_after` is measured
+in **milliseconds**; `attempts` includes the initial HTTP attempt and an auth
+replay when one occurs. Log `Magpie.Error.diagnostics(error)` when response bodies
+and summaries are not needed. Scope checks use explicitly supplied grants and
+return `:unknown` when grants are unavailable.
+
 ## From 0.6.0–0.6.2 to 0.6.3
 
 This patch hides credentials in client/token inspection and token server status

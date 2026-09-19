@@ -15,13 +15,17 @@ Like the bird, Magpie collects and stashes your things — in your Dropbox.
 ```elixir
 def deps do
   [
-    {:magpie, "~> 0.6.3"}
+    {:magpie, "~> 0.7.0"}
   ]
 end
 ```
 
 No configuration is required. Endpoint URLs, retry controls and extra `Req`
-options can be set with `config :magpie, ...` — see the `Magpie` module docs.
+options can be configured per client and per Storage operation, with
+`config :magpie, ...` as a fallback — see the
+[configuration guide](guides/configuration.md). See the
+[testing guide](guides/testing.md) for isolated offline tests and optional
+real Dropbox contract checks.
 
 ## Quick start
 
@@ -78,6 +82,9 @@ end
   transient 5xx/transport failures with `Retry-After` or exponential backoff;
   mutating calls are never retried blindly. Telemetry covers request start,
   stop, exception and retry events, plus transfer progress.
+- **Isolated client configuration** — HTTP timeouts, read retry policies and
+  execution budgets per client or operation. API errors include attempt counts,
+  retry timing and safe diagnostic maps; known scopes can be checked locally.
 - **Complete coverage** — all current user-scoped routes of the Dropbox API
   v2 (`files`, `sharing`, `file_properties`, `file_requests`, `users`,
   `account`, `auth`, `check`, `contacts`, `openid`), verified against the
@@ -115,12 +122,16 @@ the guides:
   persisting tokens and custom providers
 - [Phoenix & LiveView uploads](https://magpie.hexdocs.pm/phoenix.html) —
   controllers, `UploadWriter`, direct browser → Dropbox uploads
-- [Upgrading](https://magpie.hexdocs.pm/upgrading.html) — 0.6 additions and
+- [Configuration and diagnostics](guides/configuration.md) — isolated clients,
+  execution budgets, retries, write contracts and permissions
+- [Testing](guides/testing.md) — offline helpers and optional Dropbox checks
+- [Upgrading](https://magpie.hexdocs.pm/upgrading.html) — 0.7 contracts and
   every 0.4 call whose result changed with typed metadata
 
 ## Development
 
-The test suite runs entirely offline against `Req.Test` stubs:
+The default suite uses `Req.Test` stubs and a loopback HTTP server; it needs no
+Dropbox credentials. The optional real-account test is excluded by default.
 
 ```sh
 mix test            # run the suite

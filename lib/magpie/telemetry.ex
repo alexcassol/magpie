@@ -12,8 +12,10 @@ defmodule Magpie.Telemetry do
   Uploads and streaming downloads also emit
   `[:magpie, :transfer, :progress]` while bytes are transferred.
 
-  Request metadata includes `:method`, `:endpoint` and `:operation`. Stop
-  metadata also includes `:status` and Dropbox's `:request_id` when present.
+  Request metadata includes `:method`, `:endpoint`, `:operation` and an optional
+  client-local `:account_id`. Stop metadata also includes `:status`, `:attempts`,
+  `:retry_after` (milliseconds) and Dropbox's `:request_id` when present.
+  Retry measurements include `:retry_count` and `:delay` in milliseconds.
   Measurements use native monotonic time and can be converted with
   `System.convert_time_unit/3`. Transfer measurements contain `:transferred`
   and `:total`, while metadata identifies the `:direction` and Dropbox `:path`.
@@ -61,19 +63,51 @@ defmodule Magpie.Telemetry do
     max_retries = Req.Request.get_option(request, :max_retries, 3)
 
     if transient?(response_or_exception) and retry_count < max_retries do
-      metadata = Req.Request.get_private(request, :magpie_telemetry, %{})
+      delay = retry_delay(request, response_or_exception, retry_count)
+      remaining = Magpie.Budget.remaining(Req.Request.get_private(request, :magpie_deadline))
 
-      :telemetry.execute(
-        [:magpie, :request, :retry],
-        %{retry_count: retry_count + 1},
-        Map.merge(metadata, failure_metadata(response_or_exception))
-      )
+      if remaining == :infinity or delay < remaining do
+        metadata = Req.Request.get_private(request, :magpie_telemetry, %{})
 
-      true
+        :telemetry.execute(
+          [:magpie, :request, :retry],
+          %{retry_count: retry_count + 1, delay: delay},
+          Map.merge(metadata, failure_metadata(response_or_exception))
+        )
+
+        {:delay, delay}
+      else
+        false
+      end
     else
       false
     end
   end
+
+  defp retry_delay(request, response, count) do
+    config = Req.Request.get_private(request, :magpie_retry, [])
+
+    delay =
+      case Keyword.get(config, :delay) do
+        nil ->
+          retry_after(response) ||
+            trunc(Integer.pow(2, min(count, 20)) * 1000 * (1 - 0.1 * :rand.uniform()))
+
+        fun when is_function(fun, 1) ->
+          fun.(count)
+
+        ms ->
+          ms
+      end
+
+    unless is_integer(delay) and delay >= 0, do: raise(ArgumentError, "invalid retry delay")
+    delay
+  end
+
+  defp retry_after(%Req.Response{status: status} = response) when status in [429, 503],
+    do: Magpie.Error.retry_after(response.headers)
+
+  defp retry_after(_), do: nil
 
   defp transient?(%Req.Response{status: status}),
     do: status in [408, 429, 500, 502, 503, 504]
@@ -87,13 +121,28 @@ defmodule Magpie.Telemetry do
   defp transient?(_), do: false
 
   defp response_metadata(%Req.Response{} = response) do
-    %{status: response.status, request_id: request_id(response)}
+    Map.merge(
+      %{
+        status: response.status,
+        request_id: request_id(response),
+        retry_after: Magpie.Error.retry_after(response.headers)
+      },
+      Map.get(response.private, :magpie_diagnostics, %{})
+    )
   end
 
   defp response_metadata(_), do: %{}
 
   defp failure_metadata(%Req.Response{} = response),
-    do: %{status: response.status, request_id: request_id(response)}
+    do:
+      Map.merge(
+        %{
+          status: response.status,
+          request_id: request_id(response),
+          retry_after: Magpie.Error.retry_after(response.headers)
+        },
+        Map.get(response.private, :magpie_diagnostics, %{})
+      )
 
   defp failure_metadata(exception), do: %{exception: exception}
 

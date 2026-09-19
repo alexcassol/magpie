@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-19
+
+Client-specific settings and stricter option validation.
+
+### Added
+
+- `Client.new/2` and `Client.with_options/2` for isolated HTTP options, endpoint
+  URLs, retry policy and cooperative execution budgets; `request: [...]`
+  overrides on all Storage operations
+- execution budgets shared across Storage listing pages and upload sessions,
+  with `%Magpie.TimeoutError{}` when the budget runs out
+- per-token-server OAuth `req_options`, also available as `oauth_req_options`
+  when a client creates its own token server
+- API error `endpoint`, `attempts`, and `retry_after` (milliseconds),
+  `Error.diagnostics/1`, `Error.required_scope/1`, and local
+  `Client.missing_scopes/2` checks that distinguish unknown grants
+- account labels, attempt counts and retry delays in request Telemetry
+- configuration and testing guides, real HTTP loopback tests, and an opt-in
+  Dropbox contract test for a dedicated account
+- CI test matrix for Elixir/OTP 1.15.8/26.2, 1.18.4/27.3 and 1.20/29
+
+### Changed
+
+- Storage and high-level Files uploads reject invalid and unsupported options
+  before I/O; invalid common batch options fail before starting workers, while
+  per-item failures remain isolated. See the upgrading guide.
+- retry and HTTP configuration precedence is operation, client, then application;
+  retry policies replace rather than merge, HTTP options merge by key
+- file streaming selects the appropriate API for Elixir 1.15 and newer versions
+
+Write defaults remain `mode: "add", autorename: true`. Mutations and downloads
+streamed to disk do not gain automatic transient retries.
+
 ## [0.6.3] - 2026-09-13
 
 ### Fixed
@@ -317,7 +350,9 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
-[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.6.2...HEAD
+[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/alexcassol/magpie/releases/tag/v0.7.0
+[0.6.3]: https://github.com/alexcassol/magpie/releases/tag/v0.6.3
 [0.6.2]: https://github.com/alexcassol/magpie/releases/tag/v0.6.2
 [0.6.1]: https://github.com/alexcassol/magpie/releases/tag/v0.6.1
 [0.6.0]: https://github.com/alexcassol/magpie/releases/tag/v0.6.0

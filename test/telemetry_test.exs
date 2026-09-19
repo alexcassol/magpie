@@ -100,6 +100,56 @@ defmodule Magpie.TelemetryTest do
                     %{direction: :upload, path: "/a.txt"}}
   end
 
+  test "per-client labels and final attempt counts are observable without credentials" do
+    Req.Test.stub(Magpie, fn conn ->
+      conn |> Plug.Conn.put_status(503) |> Req.Test.json(%{"secret" => "private-body"})
+    end)
+
+    client =
+      Client.new("private-token",
+        account_id: "backup",
+        retry: [max_retries: 1, delay: 0, log_level: false]
+      )
+
+    assert {:error, %Error{attempts: 2}} = Storage.stat(client, "/a")
+
+    assert_receive {:telemetry, [:magpie, :request, :retry], %{retry_count: 1, delay: 0},
+                    %{account_id: "backup"}}
+
+    assert_receive {:telemetry, [:magpie, :request, :stop], _,
+                    %{account_id: "backup", attempts: 2} = metadata}
+
+    refute inspect(metadata) =~ "private-token"
+    refute inspect(metadata) =~ "private-body"
+  end
+
+  test "client endpoint configuration wins over a legacy global Req base URL" do
+    previous = Application.fetch_env(:magpie, :req_options)
+
+    on_exit(fn ->
+      case previous do
+        {:ok, value} -> Application.put_env(:magpie, :req_options, value)
+        :error -> Application.delete_env(:magpie, :req_options)
+      end
+    end)
+
+    Application.put_env(:magpie, :req_options,
+      plug: {Req.Test, Magpie},
+      base_url: "https://global.example/2"
+    )
+
+    Req.Test.stub(Magpie, fn conn ->
+      Req.Test.json(conn, %{".tag" => "file", "name" => conn.host})
+    end)
+
+    assert {:ok, %FileMetadata{name: "global.example"}} = Storage.stat(@client, "/a")
+    client = Client.with_options(@client, base_url: "https://client.example/2")
+    assert {:ok, %FileMetadata{name: "client.example"}} = Storage.stat(client, "/a")
+
+    assert {:ok, %FileMetadata{name: "operation.example"}} =
+             Storage.stat(client, "/a", request: [base_url: "https://operation.example/2"])
+  end
+
   test "transport failures emit exception telemetry and Storage returns them" do
     Application.put_env(:magpie, :retry, false)
     Req.Test.stub(Magpie, &Req.Test.transport_error(&1, :timeout))
