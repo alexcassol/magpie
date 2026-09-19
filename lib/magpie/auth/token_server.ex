@@ -180,7 +180,11 @@ defmodule Magpie.Auth.TokenServer do
 
   # Status reports and crash diagnostics must not print the raw state or
   # messages: both can contain credentials supplied during authorization.
-  @impl GenServer
+  # Elixir 1.15 does not declare this callback in its GenServer behaviour.
+  if {:format_status, 1} in GenServer.behaviour_info(:callbacks) do
+    @impl GenServer
+  end
+
   def format_status(status) do
     Map.new(status, fn
       {key, _value} when key in [:state, :message, :reason, :log] -> {key, :redacted}
