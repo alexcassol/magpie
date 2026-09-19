@@ -143,10 +143,11 @@ defmodule Magpie.ConfigurationTest do
       })
     end)
 
-    stream = Storage.stream(Client.new("token", timeout: 50))
-    Process.sleep(60)
+    # Coverage can take more than 50 ms to process the first page on CI.
+    stream = Storage.stream(Client.new("token", timeout: 1000))
+    Process.sleep(1100)
     assert [%FileMetadata{name: "a"}] = Enum.take(stream, 1)
-    assert_raise TimeoutError, fn -> Enum.each(stream, fn _ -> Process.sleep(60) end) end
+    assert_raise TimeoutError, fn -> Enum.each(stream, fn _ -> Process.sleep(1100) end) end
   end
 
   test "budget caps per-attempt timeouts without increasing a smaller client timeout" do
