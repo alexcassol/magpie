@@ -15,7 +15,7 @@ Like the bird, Magpie collects and stashes your things — in your Dropbox.
 ```elixir
 def deps do
   [
-    {:magpie, "~> 0.7.0"}
+    {:magpie, "~> 0.7.1"}
   ]
 end
 ```
@@ -108,6 +108,24 @@ end
   Dropbox. Magpie does not depend on `:phoenix_live_view`.
 - **Offline testing** — route every request to `Req.Test` stubs with
   `config :magpie, req_options: [plug: {Req.Test, Magpie}]`.
+
+## Runnable examples
+
+These small applications show how Magpie fits into a longer workflow. Each has
+an offline demo, tests, and commands for running against your own Dropbox app.
+
+- [Order inbox](https://github.com/alexcassol/magpie/tree/main/examples/order_inbox):
+  import supplier CSV files, reject invalid orders, and resume report/archive
+  work after a restart without importing the same orders again.
+- [Verified backup](https://github.com/alexcassol/magpie/tree/main/examples/verified_backup):
+  upload a directory, run a complete restore drill before publishing its
+  manifest, restore recorded revisions, and review a retention plan.
+- [Document search](https://github.com/alexcassol/magpie/tree/main/examples/document_search):
+  index text and Markdown in SQLite, search ranked excerpts tied to Dropbox
+  revisions, and keep results current through saved cursors and deletions.
+
+Clone this repository and follow each example's README. The examples use the
+local Magpie checkout and need no credentials for their offline demos.
 
 ## Documentation
 

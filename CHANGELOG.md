@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-20
+
+### Added
+
+- runnable order inbox example with CSV validation, duplicate prevention,
+  persisted receipts, and recovery after interrupted report/archive work
+- verified backup example with revision manifests, restore drills, integrity
+  checks, and a retention plan that leaves deletion to the operator
+- document search example with SQLite full-text indexing, ranked excerpts,
+  saved Dropbox cursors, deletion handling, and transactional rebuilds
+- offline demos, tests, English guides, and CI checks for all three examples
+
+### Documentation
+
+- link the standalone example projects from the README
+
 ## [0.7.0] - 2026-09-19
 
 Client-specific settings and stricter option validation.
@@ -350,7 +366,8 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
-[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/alexcassol/magpie/releases/tag/v0.7.1
 [0.7.0]: https://github.com/alexcassol/magpie/releases/tag/v0.7.0
 [0.6.3]: https://github.com/alexcassol/magpie/releases/tag/v0.6.3
 [0.6.2]: https://github.com/alexcassol/magpie/releases/tag/v0.6.2

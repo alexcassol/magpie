@@ -1,0 +1,20 @@
+defmodule OrderInbox.MixProject do
+  use Mix.Project
+
+  def project do
+    [
+      app: :order_inbox,
+      version: "0.1.0",
+      elixir: "~> 1.15",
+      elixirc_paths: if(Mix.env() == :test, do: ["lib", "test/support"], else: ["lib"]),
+      deps: [
+        {:magpie, path: "../.."},
+        {:jason, "~> 1.4"},
+        {:nimble_csv, "~> 1.2"},
+        {:plug, "~> 1.15", only: :test}
+      ]
+    ]
+  end
+
+  def application, do: [extra_applications: [:logger, :crypto]]
+end
