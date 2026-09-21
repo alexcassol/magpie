@@ -1,7 +1,16 @@
 defmodule Magpie.Options do
   @moduledoc false
 
-  @config [:req_options, :retry, :timeout, :base_url, :upload_url, :account_id, :scopes]
+  @config [
+    :req_options,
+    :retry,
+    :timeout,
+    :base_url,
+    :upload_url,
+    :notify_url,
+    :account_id,
+    :scopes
+  ]
   @write [:mode, :if_rev, :autorename, :mute]
   @upload @write ++ [:chunk_size, :session_threshold, :verify, :skip_unchanged, :progress]
   @listing [
@@ -72,7 +81,7 @@ defmodule Magpie.Options do
       {:account_id, value} ->
         check!(:account_id, is_nil(value) or is_binary(value))
 
-      {key, value} when key in [:base_url, :upload_url] ->
+      {key, value} when key in [:base_url, :upload_url, :notify_url] ->
         check!(
           key,
           is_binary(value) and

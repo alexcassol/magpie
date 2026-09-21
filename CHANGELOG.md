@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-09-21
+
+### Fixed
+
+- `Magpie.Files.ListFolder.longpoll/3` reached a route that does not exist on
+  the RPC host: Dropbox serves the longpoll from `notify.dropboxapi.com` and
+  rejects it when the request carries an `Authorization` header
+- the longpoll now waits for the requested timeout plus the jitter Dropbox
+  adds, instead of giving up at the configured `receive_timeout`
+
+### Added
+
+- `is_restorable` on `Magpie.FileMetadata`, filled in by calls that ask for
+  `"include_restorable_info" => true`
+- a timeout argument on `longpoll/3` (30 to 480 seconds, default 30)
+- `:notify_url` client option, also settable with `config :magpie, notify_url:`
+
 ## [0.7.1] - 2026-09-20
 
 ### Added
@@ -366,7 +383,8 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
-[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/alexcassol/magpie/releases/tag/v0.7.2
 [0.7.1]: https://github.com/alexcassol/magpie/releases/tag/v0.7.1
 [0.7.0]: https://github.com/alexcassol/magpie/releases/tag/v0.7.0
 [0.6.3]: https://github.com/alexcassol/magpie/releases/tag/v0.6.3

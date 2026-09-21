@@ -16,6 +16,7 @@ defmodule Magpie do
       config :magpie,
         base_url: "https://api.dropboxapi.com/2",
         upload_url: "https://content.dropboxapi.com/2/",
+        notify_url: "https://notify.dropboxapi.com/2",
         oauth_authorize_url: "https://www.dropbox.com/oauth2/authorize",
         oauth_token_url: "https://api.dropboxapi.com/oauth2/token"
 
@@ -41,6 +42,7 @@ defmodule Magpie do
 
   @default_base_url "https://api.dropboxapi.com/2"
   @default_upload_url "https://content.dropboxapi.com/2/"
+  @default_notify_url "https://notify.dropboxapi.com/2"
   @default_oauth_authorize_url "https://www.dropbox.com/oauth2/authorize"
   @default_oauth_token_url "https://api.dropboxapi.com/oauth2/token"
 
@@ -69,6 +71,14 @@ defmodule Magpie do
   @doc "Base URL for content (upload/download) endpoints."
   def upload_url, do: Application.get_env(:magpie, :upload_url, @default_upload_url)
 
+  @doc """
+  Base URL for the notification endpoints.
+
+  Dropbox serves `/files/list_folder/longpoll` from its own host, and rejects
+  the request when it carries an `Authorization` header.
+  """
+  def notify_url, do: Application.get_env(:magpie, :notify_url, @default_notify_url)
+
   @doc "URL where users authorize the app (OAuth 2 authorization endpoint)."
   def oauth_authorize_url,
     do: Application.get_env(:magpie, :oauth_authorize_url, @default_oauth_authorize_url)
@@ -95,6 +105,18 @@ defmodule Magpie do
   def post_url(client, base_url, url, body \\ "") do
     client
     |> new_req(base_url: base_url)
+    |> post_request(url, body)
+  end
+
+  @doc """
+  Same as `post_url/4`, but leaves out the `Authorization` header — Dropbox
+  answers 400 on its `noauth` routes when the request carries one. `opts` is
+  merged into the `Req` request, e.g. `receive_timeout:` for a blocking call.
+  """
+  @spec post_noauth(struct(), binary(), binary(), term(), keyword()) :: response
+  def post_noauth(client, base_url, url, body \\ "", opts \\ []) do
+    client
+    |> new_req([base_url: base_url, auth?: false] ++ opts)
     |> post_request(url, body)
   end
 
@@ -266,8 +288,9 @@ defmodule Magpie do
   end
 
   def new_req(client, opts \\ []) do
+    {authenticate?, opts} = Keyword.pop(opts, :auth?, true)
     default_url = Keyword.get(opts, :base_url, base_url())
-    url_key = if default_url == upload_url(), do: :upload_url, else: :base_url
+    url_key = url_key(default_url)
     config = Map.get(client, :config, [])
 
     req_options =
@@ -278,7 +301,8 @@ defmodule Magpie do
 
     base =
       cond do
-        Keyword.has_key?(opts, :base_url) and default_url not in [base_url(), upload_url()] ->
+        Keyword.has_key?(opts, :base_url) and
+            default_url not in [base_url(), upload_url(), notify_url()] ->
           default_url
 
         Keyword.has_key?(config, url_key) ->
@@ -298,10 +322,23 @@ defmodule Magpie do
     |> Req.Request.put_private(:magpie_timeout, timeout)
     |> Req.Request.put_private(:magpie_deadline, Map.get(client, :deadline))
     |> Req.Request.put_private(:magpie_account_id, Keyword.get(config, :account_id))
-    |> Magpie.Auth.Steps.attach(Magpie.Client.token_provider(client))
+    |> attach_auth(client, authenticate?)
     |> Req.Request.prepend_request_steps(magpie_check_budget: &Magpie.Budget.check!/1)
     |> Req.Request.append_request_steps(magpie_budget: &Magpie.Budget.prepare/1)
   end
+
+  defp url_key(url) do
+    cond do
+      url == upload_url() -> :upload_url
+      url == notify_url() -> :notify_url
+      true -> :base_url
+    end
+  end
+
+  defp attach_auth(req, _client, false), do: req
+
+  defp attach_auth(req, client, true),
+    do: Magpie.Auth.Steps.attach(req, Magpie.Client.token_provider(client))
 
   defp request!(req, url, opts, overrides \\ []) do
     endpoint = normalize_endpoint(url)

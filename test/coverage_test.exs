@@ -205,6 +205,26 @@ defmodule MagpieCoverageTest do
     end
   end
 
+  test "list_folder/longpoll uses the notify host and sends no access token" do
+    Req.Test.stub(Magpie, fn conn ->
+      assert conn.host == "notify.dropboxapi.com"
+      assert conn.request_path == "/2/files/list_folder/longpoll"
+      assert Plug.Conn.get_req_header(conn, "authorization") == []
+
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      assert %{"cursor" => "c", "timeout" => 60} = Jason.decode!(body)
+
+      Req.Test.json(conn, %{"changes" => false})
+    end)
+
+    assert {:ok, %{"changes" => false}} = Magpie.Files.ListFolder.longpoll(@client, "c", 60)
+  end
+
+  test "list_folder/longpoll rejects timeouts outside the Dropbox range" do
+    assert_raise ArgumentError, fn -> Magpie.Files.ListFolder.longpoll(@client, "c", 29) end
+    assert_raise ArgumentError, fn -> Magpie.Files.ListFolder.longpoll(@client, "c", 481) end
+  end
+
   test "check/app uses basic auth with the app credentials" do
     Req.Test.stub(Magpie, fn conn ->
       assert conn.request_path == "/2/check/app"

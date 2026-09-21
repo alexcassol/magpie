@@ -69,6 +69,13 @@ defmodule Magpie.MetadataTest do
              } = Metadata.decode(@file_entry)
     end
 
+    test "decodes is_restorable on a file when the call asked for it" do
+      entry = Map.put(@file_entry, "is_restorable", true)
+
+      assert %FileMetadata{is_restorable: true} = Metadata.decode(entry)
+      assert %FileMetadata{is_restorable: nil} = Metadata.decode(@file_entry)
+    end
+
     test "is_downloadable defaults to true when Dropbox omits it" do
       assert %FileMetadata{is_downloadable: true} =
                Metadata.decode(Map.delete(@file_entry, "is_downloadable"))

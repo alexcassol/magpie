@@ -134,7 +134,7 @@ defmodule Magpie.Client do
 
   Supports `:req_options`, `:retry` (false or a keyword list), `:timeout`
   (execution budget in milliseconds or `:infinity`), `:base_url`,
-  `:upload_url`, `:account_id` (a local diagnostic label), and `:scopes`
+  `:upload_url`, `:notify_url`, `:account_id` (a local diagnostic label), and `:scopes`
   (a list of known granted scopes, or nil when unknown).
 
   Precedence is operation > client > application > defaults. `:req_options`

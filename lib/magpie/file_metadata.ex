@@ -18,6 +18,9 @@ defmodule Magpie.FileMetadata do
       file.content_hash == Magpie.Metadata.content_hash(File.read!("report.pdf"))
       # => true
 
+  `is_restorable` is filled in when the call asked for
+  `"include_restorable_info" => true`, and is `nil` otherwise.
+
   Nested objects Dropbox may attach (`sharing_info`, `media_info`,
   `symlink_info`, `export_info`, `file_lock_info` and `property_groups`)
   are kept as the raw maps Dropbox returned.
@@ -35,6 +38,7 @@ defmodule Magpie.FileMetadata do
           content_hash: String.t() | nil,
           is_downloadable: boolean(),
           has_explicit_shared_members: boolean() | nil,
+          is_restorable: boolean() | nil,
           parent_shared_folder_id: String.t() | nil,
           preview_url: String.t() | nil,
           sharing_info: map() | nil,
@@ -56,6 +60,7 @@ defmodule Magpie.FileMetadata do
             content_hash: nil,
             is_downloadable: true,
             has_explicit_shared_members: nil,
+            is_restorable: nil,
             parent_shared_folder_id: nil,
             preview_url: nil,
             sharing_info: nil,
@@ -85,6 +90,7 @@ defmodule Magpie.FileMetadata do
       content_hash: map["content_hash"],
       is_downloadable: Map.get(map, "is_downloadable", true),
       has_explicit_shared_members: map["has_explicit_shared_members"],
+      is_restorable: map["is_restorable"],
       parent_shared_folder_id: map["parent_shared_folder_id"],
       preview_url: map["preview_url"],
       sharing_info: map["sharing_info"],

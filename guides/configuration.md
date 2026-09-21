@@ -43,8 +43,10 @@ config :magpie,
 Magpie reads these defaults when building each request. Avoid changing them to
 switch between accounts; keep account settings on the client.
 
-To override endpoint URLs, use `:base_url` for RPC calls and `:upload_url` for
-content calls. These client options take precedence over `req_options[:base_url]`.
+To override endpoint URLs, use `:base_url` for RPC calls, `:upload_url` for
+content calls and `:notify_url` for `/files/list_folder/longpoll`, which Dropbox
+serves from its own host. These client options take precedence over
+`req_options[:base_url]`.
 The older Req override still works when neither client option is set.
 
 ## Timeouts and retries

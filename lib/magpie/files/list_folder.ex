@@ -10,6 +10,10 @@ defmodule Magpie.Files.ListFolder do
   alias Magpie.Metadata
   import Magpie
 
+  # Dropbox holds a longpoll for up to the requested timeout plus this much
+  # random jitter, so the client has to wait longer than it asked for.
+  @longpoll_jitter 90
+
   @doc """
   Starts returning the contents of a folder. `opts` accepts the other
   `/files/list_folder` argument fields, e.g. `"recursive"`, `"limit"`,
@@ -110,15 +114,32 @@ defmodule Magpie.Files.ListFolder do
   @doc """
   A longpoll endpoint to wait for changes on an account.
 
+  Blocks for at most `timeout` seconds (30 to 480), plus up to 90 seconds of
+  jitter Dropbox adds to spread out clients. The request waits that long for
+  the response, whatever `receive_timeout` the client configures.
+
+  This endpoint lives on its own host (`Magpie.notify_url/0`) and takes no
+  access token — Dropbox rejects the call when one is sent.
+
   ## Example
 
       Magpie.Files.ListFolder.longpoll(client, cursor)
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-list_folder-longpoll
   """
-  @spec longpoll(Client.t(), binary) :: Magpie.response()
-  def longpoll(client, cursor) do
-    body = %{"cursor" => cursor, "timeout" => 30}
-    post(client, "/files/list_folder/longpoll", body)
+  @spec longpoll(Client.t(), binary, pos_integer) :: Magpie.response()
+  def longpoll(client, cursor, timeout \\ 30) do
+    unless is_integer(timeout) and timeout >= 30 and timeout <= 480,
+      do: raise(ArgumentError, "expected :timeout to be an integer between 30 and 480")
+
+    body = %{"cursor" => cursor, "timeout" => timeout}
+
+    post_noauth(
+      client,
+      notify_url(),
+      "/files/list_folder/longpoll",
+      body,
+      receive_timeout: (timeout + @longpoll_jitter) * 1_000
+    )
   end
 end

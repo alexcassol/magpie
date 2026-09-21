@@ -66,6 +66,24 @@ defmodule Magpie.HTTPIntegrationTest do
     end
   end
 
+  test "longpoll outwaits the configured receive timeout and drops the bearer token" do
+    {url, server} = serve([{150, 200, "", ~s({"changes": true})}])
+
+    client =
+      Client.new("local-test-token",
+        notify_url: url,
+        req_options: [plug: nil, receive_timeout: 20],
+        retry: false
+      )
+
+    assert {:ok, %{"changes" => true}} = Magpie.Files.ListFolder.longpoll(client, "cursor")
+    Task.await(server)
+
+    assert_receive {:http_request, request}
+    assert request =~ "POST /2/files/list_folder/longpoll"
+    refute request =~ "authorization:"
+  end
+
   test "real HTTP receive timeout follows Storage's error tuple contract" do
     {url, server} = serve([{100, 200, "", "{}"}])
 
