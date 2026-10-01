@@ -263,3 +263,8 @@ end
 only see the stub if that process is allowed — `Req.Test.allow(Magpie, self(), pid)`
 — or if the stub is shared for the whole test with
 `Req.Test.set_req_test_to_shared/0`.
+
+## Incremental listings and webhook processing
+
+See the [incremental guide](incremental.md) for page checkpoints, explicit cursor
+recovery, raw-body webhook validation, background jobs and offline consumer tests.

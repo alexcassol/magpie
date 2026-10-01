@@ -5,6 +5,11 @@ defmodule Magpie.Files.ListFolder do
   Listing pages keep their `"cursor"` and `"has_more"` keys, but every entry
   is decoded into a `Magpie.FileMetadata`, `Magpie.FolderMetadata` or
   `Magpie.DeletedMetadata` struct — see `Magpie.Metadata`.
+
+  For typed pages and an explicit reconstruction error, use
+  `Magpie.Storage.list_page/3` and `Magpie.Storage.continue_list/3`.
+  These wrappers reuse the endpoints here; this module retains its original
+  string-keyed pages and `Magpie.Error` reset responses.
   """
   alias Magpie.Client
   alias Magpie.Metadata
@@ -97,17 +102,31 @@ defmodule Magpie.Files.ListFolder do
   end
 
   @doc """
-  A way to quickly get a cursor for the folder's state.
+  Gets a cursor for future changes without returning existing entries.
+
+  `opts` accepts the same string-keyed Dropbox argument map as `list_folder/3`,
+  including `"recursive"`, `"include_deleted"` and other listing fields. Defaults
+  remain Dropbox's defaults; omitting `opts` keeps the existing path-only request.
+  Returns `{:ok, %{"cursor" => cursor}}` or the existing API error tuple.
+
+  Persist this cursor when intentionally starting from the current state, then
+  use `list_folder_continue/2` or `Magpie.Storage.continue_list/3` to read later
+  changes. This skips the initial contents; use a full listing for a baseline
+  snapshot or state reconstruction.
 
   ## Example
 
-      Magpie.Files.ListFolder.get_latest_cursor(client, "/path")
+      {:ok, %{"cursor" => cursor}} =
+        Magpie.Files.ListFolder.get_latest_cursor(client, "/path", %{
+          "recursive" => true,
+          "include_deleted" => true
+        })
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-list_folder-get_latest_cursor
   """
-  @spec get_latest_cursor(Client.t(), binary) :: Magpie.response()
-  def get_latest_cursor(client, path) do
-    body = %{"path" => path}
+  @spec get_latest_cursor(Client.t(), binary, map) :: Magpie.response()
+  def get_latest_cursor(client, path, opts \\ %{}) do
+    body = Map.merge(%{"path" => path}, opts)
     post(client, "/files/list_folder/get_latest_cursor", body)
   end
 

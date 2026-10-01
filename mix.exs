@@ -1,7 +1,7 @@
 defmodule Magpie.MixProject do
   use Mix.Project
 
-  @version "0.7.2"
+  @version "0.8.0"
   @source_url "https://github.com/alexcassol/magpie"
 
   def project do
@@ -53,6 +53,7 @@ defmodule Magpie.MixProject do
       extras: [
         "README.md",
         "guides/examples.md",
+        "guides/incremental.md",
         "guides/oauth.md",
         "guides/phoenix.md",
         "guides/configuration.md",
@@ -69,6 +70,10 @@ defmodule Magpie.MixProject do
           Magpie,
           Magpie.BatchError,
           Magpie.Client,
+          Magpie.CursorError,
+          Magpie.ListPage,
+          Magpie.Webhook,
+          Magpie.Webhook.Plug,
           Magpie.Error,
           Magpie.IntegrityError,
           Magpie.Storage,

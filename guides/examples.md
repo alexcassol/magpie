@@ -381,6 +381,123 @@ client |> Magpie.Sharing.list_folders_stream() |> Enum.map(& &1["name"])
 client |> Magpie.FileRequests.stream() |> Enum.count()
 ```
 
+## Watching folders for changes with a saved cursor
+
+Suppose `/backups/clients/<client_id>` holds each client's backup files and your
+application keeps a file-list snapshot for each client. Listing the root and
+then every client folder used to cost `2 + N` requests in this workload, before
+any extra pagination. Instead, keep one recursive cursor per watched root and
+refresh only the client folders touched since the previous cycle. With no
+changes, a cycle needs just one request per root, making polling every few
+minutes practical. Active cycles also pay for continuation pages and touched
+folder listings.
+
+The application module passed as `app` supplies `load_cursor(key)` returning
+`{:ok, cursor_or_nil}`, plus `save_cursor(key, cursor)`,
+`write_snapshot(client_folder, files)` and `full_scan(root)` returning `:ok` or
+`{:error, reason}`. Scope these callbacks to the Dropbox account/namespace;
+the key includes the normalized root and fixed listing options. Snapshot writes
+must be idempotent replacements. `full_scan/1` requests the application's full
+reconciliation, including removal of clients that no longer exist.
+
+```elixir
+defmodule MyApp.BackupWatcher do
+  alias Magpie.{Error, Storage}
+
+  def cycle(client, root, app) do
+    root = root |> String.downcase() |> String.trim_trailing("/")
+    key = {:backup_watch, root, [recursive: true, limit: 2000]}
+
+    with {:ok, cursor} <- app.load_cursor(key) do
+      result = if cursor, do: Storage.continue_list(client, cursor), else: {:error, :seed}
+
+      case pages(client, root, result, MapSet.new()) do
+        {:ok, final, touched} ->
+          with :ok <- refresh(client, touched, app), do: app.save_cursor(key, final)
+
+        {:error, reason} when reason == :seed or is_struct(reason, Magpie.CursorError) ->
+          first = Storage.list_page(client, root, recursive: true, limit: 2000)
+
+          with {:ok, final, _} <- pages(client, root, first, nil),
+               :ok <- app.save_cursor(key, final),
+               do: app.full_scan(root)
+
+        error ->
+          error
+      end
+    end
+  end
+
+  defp pages(client, root, result, touched) do
+    with {:ok, page} <- result do
+      touched = if touched, do: Enum.reduce(page.entries, touched, &touch(&1, root, &2))
+
+      if page.has_more do
+        pages(client, root, Storage.continue_list(client, page.cursor), touched)
+      else
+        {:ok, page.cursor, touched}
+      end
+    end
+  end
+
+  defp touch(%{path_lower: path} = entry, root, touched) when is_binary(path) do
+    prefix = root <> "/"
+
+    if String.starts_with?(path, prefix) do
+      [id | rest] = path |> String.replace_prefix(prefix, "") |> String.split("/", parts: 2)
+      folder = is_struct(entry, Magpie.FolderMetadata) or is_struct(entry, Magpie.DeletedMetadata)
+      if id != "" and (rest != [] or folder), do: MapSet.put(touched, prefix <> id), else: touched
+    else
+      touched
+    end
+  end
+
+  defp touch(_, _, touched), do: touched
+
+  defp refresh(client, touched, app) do
+    Enum.reduce_while(touched, :ok, fn path, :ok ->
+      result =
+        case Storage.list(client, path, recursive: true) do
+          {:ok, entries} ->
+            files = Enum.filter(entries, &is_struct(&1, Magpie.FileMetadata))
+            app.write_snapshot(path, files)
+
+          {:error, %Error{} = error} ->
+            if Error.not_found?(error), do: :ok, else: {:error, error}
+
+          error ->
+            error
+        end
+
+      if result == :ok, do: {:cont, :ok}, else: {:halt, result}
+    end)
+  end
+end
+```
+
+Call `MyApp.BackupWatcher.cycle(client, "/backups/clients", MyApp.BackupState)`
+from your application's scheduler. Each file, folder or deleted entry's
+`path_lower` identifies its first-level client folder; nested changes are folded
+into that same `MapSet` entry. Root entries, files directly under the root and
+paths outside it are ignored. A direct deletion is a candidate client folder,
+since deleted metadata does not identify its former type; `not_found` skips it
+and leaves removal to the next full reconciliation.
+
+Only a successfully drained window with all snapshots written advances the
+cursor, including an empty window. Other listing or snapshot errors leave the
+saved cursor intact: the next cycle repeats the window and may rewrite snapshots
+that already succeeded. Without a cursor, or after `Magpie.CursorError`, the
+module drains a recursive listing without retaining its entries, saves its final
+cursor, then requests a full scan of the present state. Make that full-scan
+request durable and retry it independently; coordinate checkpointing and enqueueing
+in the application so a failed enqueue cannot leave initialization unfinished.
+
+Run one cycle at a time per account/root so a slow worker cannot overwrite a
+newer checkpoint. An Oban unique job can reduce duplicate schedules; enforce
+serialization for the whole cycle, including full reconciliation. Keep a periodic
+full scan as a safety net. See the [incremental guide](incremental.md) for cursor
+recovery and webhooks.
+
 ## Batch operations without polling boilerplate
 
 Batch endpoints may finish asynchronously and hand you an `async_job_id`.
@@ -490,3 +607,8 @@ test "lists the backup folder" do
   assert {:ok, [%Magpie.FileMetadata{name: "db.dump", size: 42}]} = MyApp.Backups.list()
 end
 ```
+
+## Incremental listings and webhook processing
+
+See the [incremental guide](incremental.md) for page checkpoints, explicit cursor
+recovery, raw-body webhook validation, background jobs and offline consumer tests.

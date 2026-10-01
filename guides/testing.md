@@ -77,3 +77,8 @@ the test process, you may need to remove the folder yourself.
 
 The test does not try to trigger rate limits. Normal CI runs without Dropbox
 credentials.
+
+## Incremental listings and webhook processing
+
+See the [incremental guide](incremental.md) for page checkpoints, explicit cursor
+recovery, raw-body webhook validation, background jobs and offline consumer tests.

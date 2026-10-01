@@ -1,5 +1,40 @@
 # Upgrading Magpie
 
+## From 0.7 to 0.8
+
+This release is additive. `Storage.list/3` still returns `{:ok, entries}` and
+`Storage.stream/3` still streams entries and raises on failures. Low-level
+`ListFolder` pages keep string keys and their existing error types. No dependency,
+configuration or minimum Elixir/OTP change is required. Plug remains test-only;
+web applications provide it themselves. Oban is an optional consumer recipe,
+not a Magpie dependency.
+
+Adopt gradually: retain existing calls for small listings; use `list_page/3` and
+`continue_list/3` where explicit durable checkpoints are needed. These return
+`Magpie.ListPage` and convert Dropbox continuation resets into `Magpie.CursorError`
+with the original API error and an explicit rebuild requirement. Save cursors
+after processing the page, even empty pages; never replace them silently after
+reset. Existing low-level saved cursors can be passed directly to `continue_list`.
+
+For changes from now onward, `Files.ListFolder.get_latest_cursor/3` now accepts
+the same string-keyed options map as `list_folder/3`, including `"recursive"`.
+The existing two-argument call keeps its path-only request and result. This
+avoids listing and discarding initial entries, but does not build a baseline
+snapshot; continue to use a full listing for initialization or recovery.
+
+HTTP 400 responses from continuation, including possibly corrupted cursors,
+remain `Magpie.Error`: no stable tag identifies cursor invalidity in those
+responses. Only confirmed 409 `reset` errors require reconstruction through
+`CursorError`; applications must decide how to handle other errors explicitly.
+
+Webhooks are opt-in. Install the adapter before `Plug.Parsers`, enqueue notified
+accounts, and run a serialized incremental scanner in the application. See the
+[incremental guide](incremental.md) for complete adoption and recovery examples.
+Signed JSON objects with unsupported notification formats return `{:ok, :ignored}`
+and are acknowledged with 200 without enqueueing. Malformed recognized payloads
+still fail validation. Empty account lists also skip enqueueing. Invalid resolved
+secrets or unexpected callback returns raise visible `ArgumentError` values.
+
 ## From 0.6.x to 0.7.0
 
 Existing successful results and write defaults remain unchanged. The main

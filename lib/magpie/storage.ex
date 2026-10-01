@@ -14,6 +14,11 @@ defmodule Magpie.Storage do
       {:ok, "/tmp/today.json"} =
         Storage.download(client, "/reports/today.json", "/tmp/today.json")
 
+  For bounded listings and application-owned checkpoints use `list_page/3` and
+  `continue_list/3`. These return `Magpie.ListPage`; cursor resets explicitly
+  require reconstruction through `Magpie.CursorError`. The consumer decides when
+  to save a checkpoint. Existing `list/3` and `stream/3` remain unchanged.
+
   Upload sources are explicit:
 
     * `{:file, path}` streams a local file and automatically selects a single
@@ -208,6 +213,52 @@ defmodule Magpie.Storage do
           {:ok, [Magpie.Metadata.t()]} | {:error, Exception.t()}
   def list(client, prefix \\ "", opts \\ []) do
     safely(fn -> {:ok, client |> stream(prefix, opts) |> Enum.to_list()} end)
+  end
+
+  @doc """
+  Fetches one bounded listing page as `{:ok, %Magpie.ListPage{}}`.
+
+  Accepts the same options as `list/3` (`:recursive`, `:include_deleted`,
+  `:limit`, other listing flags and `request: [...]`). Dropbox's limit is
+  a hint, not a guaranteed page size. No subsequent page is fetched.
+  Save the returned cursor only after successfully applying the whole page,
+  including empty pages. See the [incremental guide](incremental.md).
+
+  API failures return `Magpie.Error`; transport failures and execution budgets
+  retain their existing exception types. Invalid options raise `ArgumentError`.
+  """
+  @spec list_page(Magpie.Client.t(), binary(), keyword()) ::
+          {:ok, Magpie.ListPage.t()} | {:error, Exception.t()}
+  def list_page(client, prefix \\ "", opts \\ []) do
+    {client, opts} = prepare(client, opts, :list)
+
+    safely(fn -> ListFolder.list_folder(client, prefix, option_map(opts)) end)
+    |> Magpie.ListPage.from_result()
+  end
+
+  @doc """
+  Fetches one page from a saved cursor, including changes after the final page.
+
+  Only `request: [...]` is accepted; the opaque cursor retains the original
+  listing settings. Use it with the same account and namespace. Empty or
+  non-binary cursors raise `ArgumentError` before I/O.
+
+  Returns `{:ok, %Magpie.ListPage{}}` or `{:error, exception}`. Dropbox's 409
+  `reset` becomes `%Magpie.CursorError{reason: :reset, rebuild_required: true}`
+  with the original API error in `:error`. A missing folder (`path`) and other
+  API errors remain `Magpie.Error`; HTTP 400 errors are not guessed to be resets.
+  Never silently restarts a listing or persists a checkpoint.
+  """
+  @spec continue_list(Magpie.Client.t(), binary(), keyword()) ::
+          {:ok, Magpie.ListPage.t()} | {:error, Exception.t()}
+  def continue_list(client, cursor, opts \\ []) do
+    unless is_binary(cursor) and byte_size(cursor) > 0,
+      do: raise(ArgumentError, "expected a non-empty cursor")
+
+    {client, _opts} = prepare(client, opts, :continue_list)
+
+    safely(fn -> ListFolder.list_folder_continue(client, cursor) end)
+    |> Magpie.ListPage.from_result()
   end
 
   @doc "Like `list/3`, but returns entries directly and raises on failure."

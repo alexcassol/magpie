@@ -137,6 +137,7 @@ defmodule Magpie.Options do
         :delete -> [:parent_rev]
         :stat -> [:include_media_info, :include_deleted, :include_has_explicit_shared_members]
         :list -> @listing
+        :continue_list -> []
         :upload_url -> @write ++ [:duration]
         op when op in [:url, :copy, :move, :mkdir] -> []
       end

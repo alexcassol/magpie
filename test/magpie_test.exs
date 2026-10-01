@@ -113,6 +113,39 @@ defmodule MagpieTest do
   end
 
   describe "Files.ListFolder" do
+    test "get_latest_cursor/2 keeps the path-only request and cursor result" do
+      Req.Test.stub(Magpie, fn conn ->
+        assert conn.request_path == "/2/files/list_folder/get_latest_cursor"
+        assert Jason.decode!(Req.Test.raw_body(conn)) == %{"path" => "/Photos"}
+        Req.Test.json(conn, %{"cursor" => "latest"})
+      end)
+
+      assert {:ok, %{"cursor" => "latest"}} =
+               Magpie.Files.ListFolder.get_latest_cursor(@client, "/Photos")
+
+      assert {:ok, %{"cursor" => "latest"}} =
+               Magpie.Files.ListFolder.get_latest_cursor(@client, "/Photos", %{})
+    end
+
+    test "get_latest_cursor/3 forwards recursive and other listing arguments" do
+      opts = %{
+        "recursive" => true,
+        "include_deleted" => true,
+        "include_restorable_info" => true,
+        "include_mounted_folders" => false,
+        "limit" => 100
+      }
+
+      Req.Test.stub(Magpie, fn conn ->
+        assert conn.request_path == "/2/files/list_folder/get_latest_cursor"
+        assert Jason.decode!(Req.Test.raw_body(conn)) == Map.put(opts, "path", "")
+        Req.Test.json(conn, %{"cursor" => "recursive-latest"})
+      end)
+
+      assert {:ok, %{"cursor" => "recursive-latest"}} =
+               Magpie.Files.ListFolder.get_latest_cursor(@client, "", opts)
+    end
+
     test "list_folder/2 returns folder entries" do
       Req.Test.stub(Magpie, fn conn ->
         assert conn.request_path == "/2/files/list_folder"

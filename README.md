@@ -15,7 +15,7 @@ Like the bird, Magpie collects and stashes your things — in your Dropbox.
 ```elixir
 def deps do
   [
-    {:magpie, "~> 0.7.1"}
+    {:magpie, "~> 0.8.0"}
   ]
 end
 ```
@@ -68,6 +68,24 @@ for %Magpie.FileMetadata{name: name, size: size, server_modified: at} <- entries
   "#{name}: #{size} bytes, modified #{DateTime.to_date(at)}"
 end
 ```
+
+## Incremental listings and webhooks
+
+<!-- executable-incremental -->
+```elixir
+{:ok, page} = Magpie.Storage.list_page(client, "", recursive: true, include_deleted: true)
+# Apply page.entries durably before saving page.cursor in your own storage.
+{:ok, next} = Magpie.Storage.continue_list(client, page.cursor)
+# Drain while next.has_more, then reuse the final cursor for future changes.
+```
+
+`Magpie.ListPage` keeps entries, cursor and continuity together without fetching
+more pages. Invalidated cursors return `Magpie.CursorError` requiring an explicit
+state rebuild. Existing `Storage.list` and `Storage.stream` contracts are unchanged.
+`Magpie.Webhook` verifies challenges, raw-body signatures and notified accounts;
+an optional `Magpie.Webhook.Plug` delegates enqueueing to your application.
+See the [incremental and webhook guide](guides/incremental.md) for checkpointing,
+recovery, Phoenix, background jobs and offline consumer tests.
 
 ## Features
 
@@ -143,8 +161,10 @@ the guides:
 - [Configuration and diagnostics](guides/configuration.md) — isolated clients,
   execution budgets, retries, write contracts and permissions
 - [Testing](guides/testing.md) — offline helpers and optional Dropbox checks
-- [Upgrading](https://magpie.hexdocs.pm/upgrading.html) — 0.7 contracts and
-  every 0.4 call whose result changed with typed metadata
+- [Incremental listings and webhooks](guides/incremental.md) — saved cursors,
+  explicit rebuilds and background processing
+- [Upgrading](https://magpie.hexdocs.pm/upgrading.html) — 0.7 → 0.8 migration,
+  0.7 contracts and every 0.4 call whose result changed with typed metadata
 
 ## Development
 

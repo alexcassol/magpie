@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-01
+
+<!-- Before publishing, set this date to the actual release date. A push of
+     version 0.8.0 to main can trigger the existing automatic publication. -->
+
+### Added
+
+- `Storage.list_page/3` and `Storage.continue_list/3` with typed `Magpie.ListPage`
+  results for bounded listings, external checkpoints and later change polling
+- `Files.ListFolder.get_latest_cursor/3` accepts listing options, including
+  recursive cursors for future changes without fetching an initial listing;
+  the existing two-argument call remains unchanged
+- `Magpie.CursorError` preserves Dropbox reset diagnostics and explicitly requires
+  state reconstruction without silently replacing a saved cursor; malformed-cursor
+  HTTP 400 responses remain `Magpie.Error` because there is no stable reset tag
+- framework-independent `Magpie.Webhook` challenge responses, HMAC-SHA256
+  verification of original body bytes with constant-time digest comparison,
+  and account notification decoding; unsupported signed JSON objects are
+  acknowledged as `:ignored` without enqueueing
+- optional `Magpie.Webhook.Plug` endpoint before body parsers, with bounded raw
+  body reading and application-owned enqueue callbacks; empty account lists skip
+  enqueueing and invalid resolved secrets/callback returns raise explicit errors
+- incremental scanner, recovery, Phoenix/Plug, optional Oban and consumer testing
+  recipes, with executable scanner examples and offline regression coverage
+
+### Changed
+
+- additive release: existing list, stream and low-level endpoint contracts remain
+  unchanged; no new runtime dependency or minimum version change
+- cursors, account serialization, persistence and idempotent processing remain
+  the consumer's responsibility; no synchronization engine or event history
+
 ## [0.7.2] - 2026-09-21
 
 ### Fixed
@@ -383,7 +415,8 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
-[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/alexcassol/magpie/releases/tag/v0.8.0
 [0.7.2]: https://github.com/alexcassol/magpie/releases/tag/v0.7.2
 [0.7.1]: https://github.com/alexcassol/magpie/releases/tag/v0.7.1
 [0.7.0]: https://github.com/alexcassol/magpie/releases/tag/v0.7.0
