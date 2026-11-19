@@ -1,5 +1,31 @@
 # Upgrading Magpie
 
+## From 0.8.0 to 0.8.1
+
+This patch follows the August–November 2026 Dropbox API spec updates. No code
+change is required, with one exception:
+
+- `Magpie.Files.UploadSession.append_batch/3` now raises `ArgumentError` when
+  given more than 500 entries. Dropbox lowered its limit from 1000, so such a
+  call already failed; it now fails before the request. Split larger batches
+  into groups of at most 500.
+
+Worth adopting:
+
+- Classify storage failures with `Magpie.Error.insufficient_space?/1` instead of
+  matching `"insufficient_space"` in `error_summary` — Dropbox now also sends
+  team-folder and member-folder variants that such a match would miss. A used-up
+  monthly upload allowance is reported separately; check it with
+  `Magpie.Error.upload_traffic_limit?/1`.
+- `%Magpie.SharedLink{}` now carries more of Dropbox's link metadata (`id`,
+  `name`, `path_lower`, `expires`, `link_permissions`, `preview_type`,
+  `created_timestamp`). Code matching on `url` or `path` is unaffected.
+- Key users on `account_id` (or OpenID `sub`), not email: Dropbox now states
+  emails can change and be reused by another account.
+
+Dependency minimums were raised to current releases (`req` ~> 0.7.5,
+`jason` ~> 1.4.5, `telemetry` ~> 1.4). Run `mix deps.update magpie req jason telemetry`.
+
 ## From 0.7 to 0.8
 
 This release is additive. `Storage.list/3` still returns `{:ok, entries}` and

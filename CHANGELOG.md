@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-19
+
 Tracks the August–November 2026 Dropbox API spec updates that touch routes
 Magpie already wraps. No wrapped route was removed: the dropped
 `sharing/remove_file_member` was already replaced by `remove_file_member_2`.
@@ -449,7 +451,8 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
-[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/alexcassol/magpie/releases/tag/v0.8.1
 [0.8.0]: https://github.com/alexcassol/magpie/releases/tag/v0.8.0
 [0.7.2]: https://github.com/alexcassol/magpie/releases/tag/v0.7.2
 [0.7.1]: https://github.com/alexcassol/magpie/releases/tag/v0.7.1
