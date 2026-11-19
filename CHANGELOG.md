@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Raised dependency minimums to the latest stable releases: `req` ~> 0.7.5
+  (fixes SigV4 signing on retries and 303 redirect method), `jason` ~> 1.4.5,
+  `telemetry` ~> 1.4, and for dev/test `plug` ~> 1.20, `excoveralls` ~> 0.18.5,
+  `ex_doc` ~> 0.40.
+
 ## [0.8.0] - 2026-10-01
 
 <!-- Before publishing, set this date to the actual release date. A push of

@@ -7,7 +7,7 @@ defmodule VerifiedBackup.MixProject do
       version: "0.1.0",
       elixir: "~> 1.15",
       elixirc_paths: if(Mix.env() == :test, do: ["lib", "test/support"], else: ["lib"]),
-      deps: [{:magpie, path: "../.."}, {:jason, "~> 1.4"}, {:plug, "~> 1.15", only: :test}]
+      deps: [{:magpie, path: "../.."}, {:jason, "~> 1.4"}, {:plug, "~> 1.20", only: :test}]
     ]
   end
 

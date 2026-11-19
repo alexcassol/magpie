@@ -9,8 +9,8 @@ defmodule DocumentSearch.MixProject do
       elixirc_paths: if(Mix.env() == :test, do: ["lib", "test/support"], else: ["lib"]),
       deps: [
         {:magpie, path: "../.."},
-        {:exqlite, "~> 0.40.0"},
-        {:plug, "~> 1.15", only: :test}
+        {:exqlite, "~> 0.43.0"},
+        {:plug, "~> 1.20", only: :test}
       ]
     ]
   end
