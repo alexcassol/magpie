@@ -145,6 +145,35 @@ defmodule Magpie.Error do
   def conflict?(%__MODULE__{status: 409} = error), do: tagged?(error, "conflict")
   def conflict?(_), do: false
 
+  @insufficient_space_tags ~w(
+    insufficient_space
+    team_folder_insufficient_space
+    member_folder_insufficient_space
+    team_folder_insufficient_quota
+    member_folder_insufficient_quota
+    insufficient_quota
+  )
+
+  @doc """
+  Returns whether Dropbox refused a write, copy, or move for lack of storage:
+  the user's quota, a team folder's limit, or a member folder's limit.
+  """
+  @spec insufficient_space?(term()) :: boolean()
+  def insufficient_space?(%__MODULE__{status: 409} = error),
+    do: Enum.any?(@insufficient_space_tags, &tagged?(error, &1))
+
+  def insufficient_space?(_), do: false
+
+  @doc """
+  Returns whether the user has used up their monthly upload traffic, so
+  uploads will keep failing until the allowance resets.
+  """
+  @spec upload_traffic_limit?(term()) :: boolean()
+  def upload_traffic_limit?(%__MODULE__{status: 409} = error),
+    do: tagged?(error, "upload_traffic_limit_reached")
+
+  def upload_traffic_limit?(_), do: false
+
   @doc "Returns whether Dropbox rate-limited the request."
   @spec rate_limited?(term()) :: boolean()
   def rate_limited?(%__MODULE__{status: 429}), do: true

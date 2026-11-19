@@ -10,8 +10,8 @@ defmodule OrderInbox.MixProject do
       deps: [
         {:magpie, path: "../.."},
         {:jason, "~> 1.4"},
-        {:nimble_csv, "~> 1.2"},
-        {:plug, "~> 1.15", only: :test}
+        {:nimble_csv, "~> 1.3"},
+        {:plug, "~> 1.20", only: :test}
       ]
     ]
   end

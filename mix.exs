@@ -1,7 +1,7 @@
 defmodule Magpie.MixProject do
   use Mix.Project
 
-  @version "0.8.0"
+  @version "0.8.1"
   @source_url "https://github.com/alexcassol/magpie"
 
   def project do
@@ -36,12 +36,12 @@ defmodule Magpie.MixProject do
 
   defp deps do
     [
-      {:req, "~> 0.7.4"},
-      {:jason, "~> 1.4"},
-      {:telemetry, "~> 1.0"},
-      {:plug, "~> 1.15", only: :test},
-      {:excoveralls, "~> 0.18", only: :test},
-      {:ex_doc, "~> 0.34", only: :dev, runtime: false}
+      {:req, "~> 0.7.5"},
+      {:jason, "~> 1.4.5"},
+      {:telemetry, "~> 1.4"},
+      {:plug, "~> 1.20", only: :test},
+      {:excoveralls, "~> 0.18.5", only: :test},
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false}
     ]
   end
 

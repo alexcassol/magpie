@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-19
+
+Tracks the August–November 2026 Dropbox API spec updates that touch routes
+Magpie already wraps. No wrapped route was removed: the dropped
+`sharing/remove_file_member` was already replaced by `remove_file_member_2`.
+
+### Added
+
+- `Magpie.Error.insufficient_space?/1` — matches every "out of room" tag
+  Dropbox now sends: `insufficient_space`, plus the new
+  `team_folder_insufficient_space`, `member_folder_insufficient_space`,
+  `team_folder_insufficient_quota` and `member_folder_insufficient_quota`
+  (and `insufficient_quota` on copy/move)
+- `Magpie.Error.upload_traffic_limit?/1` for the new
+  `upload_traffic_limit_reached` error (monthly upload allowance used up)
+- `%Magpie.SharedLink{}` now keeps the `SharedLinkMetadata` fields `id`,
+  `name`, `path_lower`, `expires`, `link_permissions` and the new
+  `preview_type` and `created_timestamp`, instead of only `path` and `url`
+
+### Changed
+
+- `Magpie.Files.UploadSession.append_batch/3` raises `ArgumentError` for more
+  than 500 entries — Dropbox lowered the limit from 1000
+- `Magpie.Files.get_thumbnail_v2/3` docs cover the new
+  `"preserve_transparency"` option (PNG/WebP only) and `"exclude_media_info"`
+- `Magpie.Files.search/3` docs warn against `"file_status" => "deleted"`,
+  which Dropbox deprecated as non-functional
+- `Magpie.Account`, `Magpie.OpenId.userinfo/1` and the examples guide say to
+  key users on `account_id` / `sub`, never on email, per Dropbox's new
+  guidance
+
+- Raised dependency minimums to the latest stable releases: `req` ~> 0.7.5
+  (fixes SigV4 signing on retries and 303 redirect method), `jason` ~> 1.4.5,
+  `telemetry` ~> 1.4, and for dev/test `plug` ~> 1.20, `excoveralls` ~> 0.18.5,
+  `ex_doc` ~> 0.40.
+
 ## [0.8.0] - 2026-10-01
 
 <!-- Before publishing, set this date to the actual release date. A push of
@@ -415,7 +451,8 @@ Origin section of the README).
   compatibility, but the whole Paper API is deprecated by Dropbox — prefer
   `Magpie.Files.Paper`
 
-[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/alexcassol/magpie/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/alexcassol/magpie/releases/tag/v0.8.1
 [0.8.0]: https://github.com/alexcassol/magpie/releases/tag/v0.8.0
 [0.7.2]: https://github.com/alexcassol/magpie/releases/tag/v0.7.2
 [0.7.1]: https://github.com/alexcassol/magpie/releases/tag/v0.7.1

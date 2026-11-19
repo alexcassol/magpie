@@ -1,6 +1,10 @@
 defmodule Magpie.Account do
   @moduledoc """
   Struct for a Dropbox user account (`/users/get_account`).
+
+  Key your own records on `account_id`, which Dropbox guarantees to be unique
+  and stable. `email` is neither: users can change it and Dropbox may reuse an
+  address for a different account, so treat it as contact data only.
   """
   @type t :: %__MODULE__{}
 

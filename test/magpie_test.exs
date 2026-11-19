@@ -321,6 +321,34 @@ defmodule MagpieTest do
       assert {:ok, %Magpie.SharedLink{url: "https://dbx/s/x"}} =
                Magpie.Sharing.create_shared_link_to_struct(@client, "/x")
     end
+
+    test "Sharing.create_shared_link_to_struct/2 keeps the SharedLinkMetadata fields" do
+      Req.Test.stub(Magpie, fn conn ->
+        Req.Test.json(conn, %{
+          ".tag" => "file",
+          "url" => "https://dbx/s/x",
+          "id" => "id:abc",
+          "name" => "x.pdf",
+          "path_lower" => "/x.pdf",
+          "link_permissions" => %{
+            "resolved_visibility" => %{".tag" => "public"},
+            "effective_audience" => %{".tag" => "public_logged_in_only"}
+          },
+          "preview_type" => "pdf",
+          "created_timestamp" => "2026-11-18T10:00:00Z"
+        })
+      end)
+
+      assert {:ok,
+              %Magpie.SharedLink{
+                id: "id:abc",
+                name: "x.pdf",
+                path_lower: "/x.pdf",
+                preview_type: "pdf",
+                created_timestamp: "2026-11-18T10:00:00Z",
+                link_permissions: %{"effective_audience" => %{".tag" => "public_logged_in_only"}}
+              }} = Magpie.Sharing.create_shared_link_to_struct(@client, "/x.pdf")
+    end
   end
 
   describe "Utils" do

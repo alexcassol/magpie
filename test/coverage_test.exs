@@ -220,6 +220,24 @@ defmodule MagpieCoverageTest do
     assert {:ok, %{"changes" => false}} = Magpie.Files.ListFolder.longpoll(@client, "c", 60)
   end
 
+  test "upload_session/append_batch rejects more than 500 entries" do
+    entries =
+      for _ <- 1..501, do: %{"cursor" => %{"session_id" => "s", "offset" => 0}, "length" => 0}
+
+    assert_raise ArgumentError, ~r/at most 500 entries, got 501/, fn ->
+      Magpie.Files.UploadSession.append_batch(@client, entries, "")
+    end
+  end
+
+  test "upload_session/append_batch accepts exactly 500 entries" do
+    Req.Test.stub(Magpie, &Req.Test.json(&1, nil))
+
+    entries =
+      for _ <- 1..500, do: %{"cursor" => %{"session_id" => "s", "offset" => 0}, "length" => 0}
+
+    assert {:ok, _} = Magpie.Files.UploadSession.append_batch(@client, entries, "")
+  end
+
   test "list_folder/longpoll rejects timeouts outside the Dropbox range" do
     assert_raise ArgumentError, fn -> Magpie.Files.ListFolder.longpoll(@client, "c", 29) end
     assert_raise ArgumentError, fn -> Magpie.Files.ListFolder.longpoll(@client, "c", 481) end

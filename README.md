@@ -15,7 +15,7 @@ Like the bird, Magpie collects and stashes your things — in your Dropbox.
 ```elixir
 def deps do
   [
-    {:magpie, "~> 0.8.0"}
+    {:magpie, "~> 0.8.1"}
   ]
 end
 ```
@@ -163,7 +163,7 @@ the guides:
 - [Testing](guides/testing.md) — offline helpers and optional Dropbox checks
 - [Incremental listings and webhooks](guides/incremental.md) — saved cursors,
   explicit rebuilds and background processing
-- [Upgrading](https://magpie.hexdocs.pm/upgrading.html) — 0.7 → 0.8 migration,
+- [Upgrading](https://magpie.hexdocs.pm/upgrading.html) — 0.8.0 → 0.8.1 notes, 0.7 → 0.8 migration,
   0.7 contracts and every 0.4 call whose result changed with typed metadata
 
 ## Development
