@@ -378,6 +378,33 @@ defmodule Magpie.StorageTest do
       assert Error.not_found?(not_found)
       refute Error.conflict?(not_found)
       assert Error.conflict?(Error.new(409, %{"error_summary" => "path/conflict/file/.."}))
+
+      for summary <- [
+            "path/insufficient_space/..",
+            "path/team_folder_insufficient_space/..",
+            "path/member_folder_insufficient_space/..",
+            "team_folder_insufficient_quota/..",
+            "member_folder_insufficient_quota/..",
+            "insufficient_quota/.."
+          ] do
+        assert Error.insufficient_space?(Error.new(409, %{"error_summary" => summary}))
+      end
+
+      refute Error.insufficient_space?(not_found)
+
+      refute Error.insufficient_space?(
+               Error.new(507, %{"error_summary" => "insufficient_space/"})
+             )
+
+      traffic =
+        Error.new(409, %{
+          "error" => %{".tag" => "path", "reason" => %{".tag" => "upload_traffic_limit_reached"}},
+          "error_summary" => "path/upload_traffic_limit_reached/"
+        })
+
+      assert Error.upload_traffic_limit?(traffic)
+      refute Error.insufficient_space?(traffic)
+      refute Error.upload_traffic_limit?(not_found)
       assert Error.rate_limited?(Error.new(429, "slow down"))
       assert Error.auth?(Error.new(400, %{"error" => "invalid_grant"}))
       assert Error.retryable?(Error.new(503, "unavailable"))

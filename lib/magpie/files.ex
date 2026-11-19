@@ -180,6 +180,11 @@ defmodule Magpie.Files do
   `options` accepts the `SearchOptions` fields, e.g.
   `%{"path" => "/Photos", "max_results" => 100, "filename_only" => true}`.
 
+  Do not pass `"file_status" => "deleted"`: Dropbox deprecated it because
+  deleted-file search does not work. To enumerate deleted entries, use
+  `Magpie.Files.ListFolder.list_folder/3` with `%{"include_deleted" => true}`
+  (there is no full-text equivalent).
+
   Each match's `"metadata"` is decoded into a `Magpie.FileMetadata` /
   `Magpie.FolderMetadata` struct (see `Magpie.Metadata.decode_matches/1`);
   the rest of the match (`"match_type"`, `"highlights"`) is kept as is.
@@ -736,8 +741,12 @@ defmodule Magpie.Files do
   @doc """
   Get a thumbnail for an image or document, addressed by path or shared link.
   `resource` is `%{".tag" => "path", "path" => ...}` or
-  `%{".tag" => "link", "url" => ...}`; `opts` accepts `"format"`, `"size"`
-  and `"mode"`.
+  `%{".tag" => "link", "url" => ...}`; `opts` accepts `"format"`, `"size"`,
+  `"mode"`, `"exclude_media_info"` and `"preserve_transparency"`.
+
+  `"preserve_transparency" => true` keeps the image's alpha channel and only
+  works with `"format" => "png"` or `"webp"`; with JPEG output Dropbox
+  answers with an `unsupported_output_format` error.
 
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-get_thumbnail_v2
   """

@@ -7,7 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Tracks the August–November 2026 Dropbox API spec updates that touch routes
+Magpie already wraps. No wrapped route was removed: the dropped
+`sharing/remove_file_member` was already replaced by `remove_file_member_2`.
+
+### Added
+
+- `Magpie.Error.insufficient_space?/1` — matches every "out of room" tag
+  Dropbox now sends: `insufficient_space`, plus the new
+  `team_folder_insufficient_space`, `member_folder_insufficient_space`,
+  `team_folder_insufficient_quota` and `member_folder_insufficient_quota`
+  (and `insufficient_quota` on copy/move)
+- `Magpie.Error.upload_traffic_limit?/1` for the new
+  `upload_traffic_limit_reached` error (monthly upload allowance used up)
+- `%Magpie.SharedLink{}` now keeps the `SharedLinkMetadata` fields `id`,
+  `name`, `path_lower`, `expires`, `link_permissions` and the new
+  `preview_type` and `created_timestamp`, instead of only `path` and `url`
+
 ### Changed
+
+- `Magpie.Files.UploadSession.append_batch/3` raises `ArgumentError` for more
+  than 500 entries — Dropbox lowered the limit from 1000
+- `Magpie.Files.get_thumbnail_v2/3` docs cover the new
+  `"preserve_transparency"` option (PNG/WebP only) and `"exclude_media_info"`
+- `Magpie.Files.search/3` docs warn against `"file_status" => "deleted"`,
+  which Dropbox deprecated as non-functional
+- `Magpie.Account`, `Magpie.OpenId.userinfo/1` and the examples guide say to
+  key users on `account_id` / `sub`, never on email, per Dropbox's new
+  guidance
 
 - Raised dependency minimums to the latest stable releases: `req` ~> 0.7.5
   (fixes SigV4 signing on retries and 303 redirect method), `jason` ~> 1.4.5,

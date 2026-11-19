@@ -22,8 +22,9 @@ client =
 # Validates the user token — Dropbox echoes the query back
 {:ok, %{"result" => "ping"}} = Magpie.Check.user(client)
 
-# Who am I?
-{:ok, %{"email" => email}} = Magpie.Users.current_account(client)
+# Who am I? Key records on account_id — email can change or be reused
+{:ok, %{"account_id" => account_id, "email" => email}} =
+  Magpie.Users.current_account(client)
 
 # A token Dropbox no longer accepts comes back as a plain error
 {:error, %Magpie.Error{status: 401, summary: "invalid_access_token/.."}} =
@@ -576,6 +577,24 @@ case Magpie.Storage.get(client, "/Invoices/latest.pdf") do
     cond do
       Magpie.Error.not_found?(error) -> :missing
       Magpie.Error.rate_limited?(error) -> :try_again_later
+      true -> raise error
+    end
+end
+```
+
+Writes, copies and moves can also fail for lack of room. Dropbox reports that
+with several tags — the user's quota, a team folder's limit or a member
+folder's limit — and `Magpie.Error.insufficient_space?/1` matches all of them.
+A used-up monthly upload allowance is different: retrying will not help until
+it resets, so check it with `Magpie.Error.upload_traffic_limit?/1`:
+
+```elixir
+case Magpie.Files.upload_file(client, "/Backups/big.iso", "big.iso") do
+  {:ok, metadata} -> metadata
+  {:error, %Magpie.Error{} = error} ->
+    cond do
+      Magpie.Error.insufficient_space?(error) -> :storage_full
+      Magpie.Error.upload_traffic_limit?(error) -> :upload_limit_reached
       true -> raise error
     end
 end

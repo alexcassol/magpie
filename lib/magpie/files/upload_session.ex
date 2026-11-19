@@ -11,6 +11,8 @@ defmodule Magpie.Files.UploadSession do
   import Magpie
   alias Magpie.Metadata
 
+  @max_append_batch_entries 500
+
   @doc """
   Upload sessions allow you to upload a single file in one or more requests,
   for example where the size of the file is greater than 150 MB.
@@ -206,8 +208,20 @@ defmodule Magpie.Files.UploadSession do
   entry's `"length"`; entries are maps with `"cursor"`, `"length"` and
   optionally `"close"`.
 
+  Dropbox accepts at most #{@max_append_batch_entries} entries per call (the
+  limit dropped from 1000 in the November 2026 spec update); a longer list
+  raises `ArgumentError` instead of making a request that cannot succeed.
+
   More info at: https://www.dropbox.com/developers/documentation/http/documentation#files-upload_session-append_batch
   """
+  def append_batch(_client, entries, _data) when length(entries) > @max_append_batch_entries,
+    do:
+      raise(
+        ArgumentError,
+        "upload_session/append_batch accepts at most #{@max_append_batch_entries} entries, " <>
+          "got #{length(entries)}"
+      )
+
   def append_batch(client, entries, data) do
     arg = %{"entries" => entries}
 
